@@ -52,7 +52,7 @@ if (onPhone) {
   head.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     const r = head.getBoundingClientRect(), size = 72;
-    const b = ballEl(); b.classList.add('float-ball'); document.body.appendChild(b);
+    const b = ballEl(); b.classList.add('float-ball'); Look.dress(b); document.body.appendChild(b);
     let x = r.left + r.width / 2 - size / 2, y = r.top + r.height / 2 - size / 2, vx = 0, vy = 0, angle = 0, samples = [], held = true, raf = 0, last = 0;
     const place = () => { b.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg)`; };
     const floor = () => $('ask').getBoundingClientRect().top - size - 6;
@@ -84,6 +84,7 @@ if (onPhone) {
 
 /* ---------------- Buddy's face ---------------- */
 const faces = [$('ball'), $('headBall')];
+Look.apply();   // your Buddy's name, colour, eyes, mouth and hat (look.js)
 const face = (state) => faces.forEach((f) => { f.className = f.className.replace(/\b(blink|happy|sleepy|think|work)\b/g, '').trim(); if (state) f.classList.add(...state.split(' ')); });
 setInterval(() => { if (!busy && ready) { face('blink'); setTimeout(() => face(''), 140); } }, 4200);
 function status(t) { $('status').textContent = t; }
@@ -109,8 +110,10 @@ function note(text, action) { const n = el('div', 'note', text); if (action) { c
 
 function greet() {
   log.replaceChildren();
-  say('bot', `Hi! I’m **Buddy**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you\nTell me what you need. I’ll always ask before moving or deleting anything.`);
-  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : 'Find the best free note apps for Mac', 'Write a short thank-you email']);
+  const L = Look.get();
+  say('bot', `Hi${L.call ? ' ' + L.call : ''}! I’m **${L.name}**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you` +
+    (HELPERS.hands ? '\n- **Hands Buddy** uses your other apps (it asks first, and Esc stops it)' : '') + `\nTell me what you need. I’ll always ask before moving or deleting anything.`);
+  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : `Find the best free note apps for ${window.__platform === 'windows' ? 'Windows' : 'Mac'}`, 'Write a short thank-you email']);
 }
 function chips(list) {
   const box = $('chips'); box.replaceChildren();
@@ -137,7 +140,7 @@ function workArea() {
 }
 
 const ERRORS = { offline: 'I can’t reach my brain. Is Ollama running (or the internet on)? Then try again.', nomodel: 'That AI model isn’t available. Pick another in Settings.',
-  nokey: 'Add your free key in Settings first.', badkey: 'That key didn’t work. Check it in Settings.', ratelimit: 'The free daily amount is used up for now. Try again later, or switch to This Mac in Settings.' };
+  nokey: 'Add your free key in Settings first.', badkey: 'That key didn’t work. Check it in Settings.', ratelimit: 'The free daily amount is used up for now. Try again later, or switch to This ' + DEVICE + ' in Settings.' };
 async function ask(text) {
   text = String(text ?? $('input').value).trim();
   if (!text || busy) return;
@@ -148,7 +151,7 @@ async function ask(text) {
   const area = workArea();
   const thinking = say('bot', ''); thinking.classList.add('typing');
   try {
-    const answer = await Team.ask(text, area, { models, signal: controller.signal });
+    const answer = await Team.ask(text, area, { models, name: Look.name(), persona: Look.persona(), signal: controller.signal });
     thinking.classList.remove('typing'); thinking.innerHTML = md(answer);
     face('happy'); setTimeout(() => face(''), 1600);
   } catch (e) {
@@ -201,13 +204,14 @@ $('keySave').addEventListener('click', async () => {
   showSettings(); refreshStatus();
 });
 async function showSettings() {
+  Look.render($('lookBox'));
   $('settings').classList.remove('hidden'); $('log').classList.add('hidden'); $('ask').classList.add('hidden'); $('chips').classList.add('hidden');
   renderProviders();
   const s = await AI.status();
   const pName = AI.PROVIDERS[AI.provider()].name;
   $('ollamaState').textContent = s.provider !== 'ollama'
-    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept in your Mac’s Keychain.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
-    : s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this Mac.` : 'Ollama is running, but no AI model is downloaded yet. In Terminal: ollama pull ' + AI.DEFAULT_MODEL)
+    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept ${DEVICE === 'Mac' ? 'in your Mac’s Keychain' : 'safely on this ' + DEVICE}.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
+    : s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this ${DEVICE}.` : 'Ollama is running, but no AI model is downloaded yet. In a terminal: ollama pull ' + AI.DEFAULT_MODEL)
     : 'Ollama isn’t running. Install it from ollama.com (free), open it, then come back.';
   const names = s.models.map((m) => m.name);
   // An online service's list changes over time: if a chosen model isn't offered any more, take a good one.
@@ -252,7 +256,7 @@ async function refreshStatus() {
   ready = s.running && s.models.some((m) => m.name === models.lead);
   if (!s.running) { status('Asleep: Ollama isn’t running'); face('sleepy'); }
   else if (!ready) { status('Waiting for my AI model…'); face('sleepy'); }
-  else { status(`Ready · ${models.lead} on this Mac`); if (!busy) face(''); }
+  else { status(`Ready · ${models.lead} on this ${DEVICE}`); if (!busy) face(''); }
 }
 greet();
 refreshStatus();
@@ -265,7 +269,7 @@ window.__test = async (q, provider) => {
   window.__debugAI = (m) => log('   AI: ' + JSON.stringify({ calls: (m.tool_calls || []).map((c) => c.function && c.function.name + ' ' + JSON.stringify(c.function.arguments)), text: String(m.content || '').slice(0, 160) }));
   const t0 = Date.now();
   const area = { job(key, task) { log(`→ ${HELPERS[key].name}: ${task}`); return { step: (s, err) => log(`   ${err ? '⚠︎' : '·'} ${s}`), done: () => log(`   ✓ ${HELPERS[key].name} done`) }; } };
-  try { const a = await Team.ask(q, area, { models, signal: new AbortController().signal }); log('ANSWER (' + Math.round((Date.now() - t0) / 1000) + 's): ' + a.replace(/\n+/g, ' ⏎ ')); }
+  try { const a = await Team.ask(q, area, { models, name: Look.name(), persona: Look.persona(), signal: new AbortController().signal }); log('ANSWER (' + Math.round((Date.now() - t0) / 1000) + 's): ' + a.replace(/\n+/g, ' ⏎ ')); }
   catch (e) { log('ERROR: ' + e.message); }
   Native.call('quit');
 };

@@ -181,7 +181,26 @@ final class Tools {
       if let r = URLComponents(string: link.hasPrefix("//") ? "https:" + link : link)?.queryItems?.first(where: { $0.name == "uddg" })?.value { link = r }
       results.append(["title": plain(capture(#"class="result__a"[^>]*>(.*?)</a>"#, b) ?? ""), "url": link, "snippet": plain(capture(#"class="result__snippet"[^>]*>(.*?)</a>"#, b) ?? "")])
     }
+    // DuckDuckGo sometimes answers with a robot check instead; then Bing.
+    if results.isEmpty { results = bing(q) }
     done(true, results)
+  }
+  private func bing(_ q: String) -> [[String: String]] {
+    guard let u = URL(string: "https://www.bing.com/search?setlang=en&q=" + (q.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "")), let (d, _) = get(u),
+          let html = String(data: d, encoding: .utf8) else { return [] }
+    var results: [[String: String]] = []
+    for b in html.components(separatedBy: "class=\"b_algo\"").dropFirst().prefix(8) {
+      guard let h2 = capture(#"<h2[^>]*>(.*?)</h2>"#, b), let href = capture(#"href="([^"]+)""#, h2) else { continue }
+      var link = href.replacingOccurrences(of: "&amp;", with: "&")
+      // Bing's own redirect link carries the real address in u=a1<base64>.
+      if var enc = capture(#"[?&]u=a1([^&]+)"#, link) {
+        enc = enc.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        enc += String(repeating: "=", count: (4 - enc.count % 4) % 4)
+        if let data = Data(base64Encoded: enc), let real = String(data: data, encoding: .utf8) { link = real }
+      }
+      results.append(["title": plain(h2), "url": link, "snippet": plain(capture(#"<p[^>]*>(.*?)</p>"#, b) ?? "")])
+    }
+    return results
   }
   private func webFetch(_ m: [String: Any], _ done: Done) {
     guard let s = m["url"] as? String, let u = URL(string: s), ["http", "https"].contains(u.scheme ?? ""), let (d, type) = get(u) else { return done(false, "I couldn’t open that page.") }
@@ -201,7 +220,16 @@ final class Tools {
   }
   private func plain(_ html: String) -> String {
     var t = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-    for (a, b) in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#x27;", "'"), ("&#39;", "'"), ("&nbsp;", " ")] { t = t.replacingOccurrences(of: a, with: b) }
+    for (a, b) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&nbsp;", " ")] { t = t.replacingOccurrences(of: a, with: b) }
+    // Numbered characters like &#0183; or &#x27;
+    if let re = try? NSRegularExpression(pattern: "&#(x?)([0-9a-fA-F]{1,6});") {
+      for m in re.matches(in: t, range: NSRange(t.startIndex..., in: t)).reversed() {
+        guard let r = Range(m.range, in: t), let hex = Range(m.range(at: 1), in: t), let num = Range(m.range(at: 2), in: t) else { continue }
+        let c = UInt32(t[num], radix: t[hex].isEmpty ? 10 : 16).flatMap(Unicode.Scalar.init).map { String(Character($0)) } ?? ""
+        t.replaceSubrange(r, with: c)
+      }
+    }
+    t = t.replacingOccurrences(of: "&amp;", with: "&")
     return t.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
   }
 }

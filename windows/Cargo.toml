@@ -1,0 +1,35 @@
+[package]
+name = "stupid-buddy"
+version = "0.5.0"
+edition = "2021"
+
+[dependencies]
+arboard = { version = "3.7.0", default-features = false }
+base64 = "0.23.1"
+dirs = "7"
+dunce = "1.0.5"
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
+include_dir = "0.7.4"
+pdf-extract = "0.12.1"
+regex = "1.13.1"
+rfd = "0.17.2"
+serde_json = "1.0.154"
+tao = "0.37.1"
+trash = "5.2.9"
+ureq = "3.4.2"
+walkdir = "2.5.0"
+wry = "0.57.0"
+zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+uiautomation = "0.25.1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_UI_Shell"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
+[build-dependencies]
+winresource = "0.1.34"
