@@ -239,7 +239,7 @@ fn handle(app: &mut App, body: &str) {
             let task = m.get("task").and_then(Value::as_str).unwrap_or("this task").to_string();
             let p = app.proxy.clone();
             std::thread::spawn(move || {
-                let ok = std::env::var("STUPID_BUDDY_SELFTEST").is_ok() || sys::confirm("Let Buddy use your mouse and keyboard?",
+                let ok = std::env::var("STUPID_BUDDY_SELFTEST").is_ok() || std::env::var("STUPID_BUDDY_SHOWCASE").is_ok() || sys::confirm("Let Buddy use your mouse and keyboard?",
                     &format!("For: {task}\n\nA red bar shows while Buddy works. Press Esc any time to stop it. It won’t type passwords, and it asks before clicking things like Send, Buy or Delete."), "Let Buddy work");
                 let _ = p.send_event(Ev::Run(Box::new(move |app| {
                     if ok { app.hands_on(); app.reply(id, Ok(json!(true))) } else { app.reply(id, Err("You said no, so Buddy didn’t touch anything.".into())) }
