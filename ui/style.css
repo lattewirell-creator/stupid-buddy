@@ -37,6 +37,11 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .float-ball .hat, .look-preview .hat { font-size: 36px; top: -26px; }
 #ball .hat { font-size: 30px; top: -19px; }
 #ball.has-hat { top: 19px; }
+/* The Eye: The Stupid Company's logo. A ring in Buddy's colour, the first <i> is the pupil (so it still blinks), and a small dark dot. */
+.ball.shape-eye { background: radial-gradient(circle closest-side, transparent 0 64%, var(--c) 66% 98%, transparent 100%); box-shadow: none; }
+.ball.shape-eye i:nth-of-type(1) { left: 35.5%; top: 35.5%; width: 29%; height: 29%; border-radius: 50%; background: var(--c); }
+.ball.shape-eye i:nth-of-type(2) { left: 71%; right: auto; top: 5%; width: 24%; height: 24%; border-radius: 50%; background: #3B3426; transform: none !important; animation: none !important; }
+#ball.shape-eye, .float-ball.shape-eye, .look-preview.shape-eye { box-shadow: none; filter: drop-shadow(0 6px 10px rgba(80,40,20,.25)); }
 .ball.blink i { transform: scaleY(.15); }
 .ball.happy i { transform: scaleY(.55) translateY(-30%); }
 .ball.sleepy i { transform: scaleY(.18); }
