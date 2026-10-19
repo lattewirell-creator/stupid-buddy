@@ -41,6 +41,8 @@ jobs:
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
           $shots = "$env:RUNNER_TEMP\shots"; New-Item -ItemType Directory -Force $shots | Out-Null
           $log = "$env:RUNNER_TEMP\showcase.log"
+          # GitHub's Windows machines have no graphics chip: software WebGL, so the screenshots show the 3D Buddy.
+          $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist"
           $env:STUPID_BUDDY_SHOWCASE = "1"; $env:STUPID_BUDDY_SELFTEST = $null; $env:STUPID_BUDDY_LOG = $log; $env:STUPID_BUDDY_DATA = "$env:RUNNER_TEMP\buddy-show"
           $p = Start-Process -FilePath target\release\stupid-buddy.exe -PassThru
           $done = @{}

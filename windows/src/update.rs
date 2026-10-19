@@ -30,14 +30,14 @@ pub fn verify(data: &[u8], signature_b64: &str) -> bool {
 }
 
 fn agent() -> ureq::Agent { ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(300))).build().into() }
-pub struct Found { pub version: String, setup: String, sig: String }
+pub struct Found { pub version: String, setup: String, sig: Option<String> }
 fn latest() -> Option<Found> {
     let mut r = agent().get(&format!("https://api.github.com/repos/{REPO}/releases/latest")).header("User-Agent", "TheStupidBuddy-Updater").header("Accept", "application/vnd.github+json").call().ok()?;
     let rel: Value = serde_json::from_str(&r.body_mut().read_to_string().ok()?).ok()?;
     let version = rel["tag_name"].as_str()?.trim_start_matches('v').to_string();
     let assets = rel["assets"].as_array()?;
     let url = |suffix: &str| assets.iter().find(|a| a["name"].as_str().map(|n| n.ends_with(suffix)).unwrap_or(false)).and_then(|a| a["browser_download_url"].as_str()).map(String::from);
-    Some(Found { version, setup: url("-windows-setup.exe")?, sig: url("-windows-setup.exe.sig")? })
+    Some(Found { version, setup: url("-windows-setup.exe")?, sig: url("-windows-setup.exe.sig") })
 }
 fn download(url: &str, limit: u64) -> Option<Vec<u8>> {
     if !url.starts_with("https://github.com/") && !url.starts_with("https://objects.githubusercontent.com/") { return None; }
@@ -58,13 +58,15 @@ pub fn check(manual: bool, current: &str, dry_run: bool) -> Outcome {
     store::set("lastUpdateCheck", json!(now));
     let Some(f) = latest() else { return if manual { Outcome::Message("Couldn’t check for updates. Check your connection and try again later.".into()) } else { Outcome::Quiet } };
     if !newer(&f.version, current) { return if manual { Outcome::Message(format!("You have the newest Buddy ({current}).")) } else { Outcome::Quiet }; }
+    // Releases before 0.8.0 weren't signed: those can't install themselves.
+    let Some(sig_url) = f.sig.clone() else { return if manual { Outcome::Message(format!("Buddy {} is out, but it can’t install itself. Download it from github.com/{REPO}/releases.", f.version)) } else { Outcome::Quiet } };
     if !dry_run && (store::get("skipVersion").and_then(|v| v.as_str().map(String::from)).as_deref() == Some(f.version.as_str()) && !manual) { return Outcome::Quiet; }
     if !dry_run && !sys::confirm("Update The Stupid Buddy?", &format!("Buddy {} is out (you have {current}). It downloads now, installs by itself and Buddy starts again in a few seconds. Your settings and keys stay on this PC.", f.version), "Update now") {
         store::set("skipVersion", json!(f.version));   // don't ask again for this version (Settings → Check for updates still can)
         return Outcome::Message("Okay, not now.".into());
     }
     let Some(setup) = download(&f.setup, 200 * 1024 * 1024) else { return Outcome::Message("The update couldn’t be downloaded. Try again later.".into()) };
-    let Some(sig) = download(&f.sig, 4096).and_then(|d| String::from_utf8(d).ok()) else { return Outcome::Message("The update’s signature couldn’t be downloaded, so it wasn’t installed.".into()) };
+    let Some(sig) = download(&sig_url, 4096).and_then(|d| String::from_utf8(d).ok()) else { return Outcome::Message("The update’s signature couldn’t be downloaded, so it wasn’t installed.".into()) };
     if !verify(&setup, &sig) { return Outcome::Message("The downloaded update failed its signature check, so it wasn’t installed.".into()); }
     if dry_run { return Outcome::Message(format!("verified {} ({} bytes)", f.version, setup.len())); }
     let path = std::env::temp_dir().join(format!("StupidBuddy-{}-windows-setup.exe", f.version));
