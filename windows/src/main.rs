@@ -319,7 +319,7 @@ await T('window',{mode:'open'});await T('window',{mode:'ball'});await L('DONE');
     } else if std::env::var("STUPID_BUDDY_SHOWCASE").is_ok() {
         // Each "SHOT name" in the log is the moment the test machine photographs the screen (see windows.yml).
         later(r#"(async()=>{const L=(t)=>Native.call('log',{text:t});const W=(ms)=>new Promise(r=>setTimeout(r,ms));const S=async(n)=>{await L('SHOT '+n);await W(2500)};
-localStorage.removeItem('look');Look.apply();await W(800);await S('1-ball');
+localStorage.removeItem('look');Look.apply();await W(800);const gl=document.createElement('canvas');await L('3D '+typeof window.Buddy3D+' webgl2 '+!!gl.getContext('webgl2')+' webgl '+!!document.createElement('canvas').getContext('webgl')+' ball '+document.getElementById('ball').className);await S('1-ball');
 open();await W(1200);await S('2-panel');
 await showSettings();await W(500);Look.render(document.getElementById('lookBox'));await S('3-settings');
 localStorage.setItem('look',JSON.stringify({shape:'eye',color:'mint',hat:'crown',name:'Pip'}));Look.apply();Look.render(document.getElementById('lookBox'));await W(400);await S('4-eye-settings');
