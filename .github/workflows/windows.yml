@@ -30,7 +30,7 @@ jobs:
           if (-not (Test-Path $log)) { Write-Error "No self-test log"; exit 1 }
           $text = Get-Content $log -Raw
           Write-Host $text
-          $want = @('DEVICE PC', 'OK files.roots', 'OK files.write', 'OK files.read', 'FAIL files.list', 'OK web.search', 'OK hands.start', 'OK hands.stop', 'OK window', 'DONE')
+          $want = @('DEVICE PC', 'OK files.roots', 'OK files.write', 'OK files.read', 'FAIL files.list', 'OK web.search [{', 'OK hands.start', 'OK hands.stop', 'OK window', 'DONE')
           $bad = $want | Where-Object { -not $text.Contains($_) }
           if ($bad) { Write-Error "Missing: $($bad -join ', ')"; exit 1 }
           if ($text -notmatch 'OK hands\.shot \{"height') { Write-Error "Hands Buddy couldn't take a screenshot"; exit 1 }

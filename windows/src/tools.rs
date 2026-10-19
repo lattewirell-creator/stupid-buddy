@@ -293,7 +293,25 @@ fn web_search(m: &Map<String, Value>) -> Out {
         results.push(json!({ "title": plain(&capture(r#"class="result__a"[^>]*>(.*?)</a>"#, b).unwrap_or_default()), "url": link,
             "snippet": plain(&capture(r#"class="result__snippet"[^>]*>(.*?)</a>"#, b).unwrap_or_default()) }));
     }
+    // DuckDuckGo sometimes answers with a robot check instead; then Bing.
+    if results.is_empty() { results = bing(q); }
     Ok(json!(results))
+}
+fn bing(q: &str) -> Vec<Value> {
+    use base64::Engine;
+    let Some((html, _)) = get(&format!("https://www.bing.com/search?q={}&setlang=en", enc(q))) else { return vec![] };
+    let mut results = vec![];
+    for b in html.split("class=\"b_algo\"").skip(1).take(8) {
+        let Some(h2) = capture(r"<h2[^>]*>(.*?)</h2>", b) else { continue };
+        let Some(href) = capture(r#"href="([^"]+)""#, &h2) else { continue };
+        let mut link = href.replace("&amp;", "&");
+        // Bing's own redirect link carries the real address in u=a1<base64>.
+        if let Some(u) = capture(r"[?&]u=a1([^&]+)", &link) {
+            if let Some(real) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(u.trim_end_matches('=')).ok().and_then(|d| String::from_utf8(d).ok()) { link = real; }
+        }
+        results.push(json!({ "title": plain(&h2), "url": link, "snippet": plain(&capture(r"<p[^>]*>(.*?)</p>", b).unwrap_or_default()) }));
+    }
+    results
 }
 fn web_fetch(m: &Map<String, Value>) -> Out {
     let url = str_of(m, "url");
@@ -314,7 +332,12 @@ fn page_text(html: &str) -> String {
 }
 fn plain(html: &str) -> String {
     let mut t = Regex::new(r"<[^>]+>").unwrap().replace_all(html, "").to_string();
-    for (a, b) in [("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#x27;", "'"), ("&#39;", "'"), ("&nbsp;", " ")] { t = t.replace(a, b); }
+    for (a, b) in [("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&nbsp;", " ")] { t = t.replace(a, b); }
+    // Numbered characters like &#0183; or &#x27;
+    t = Regex::new(r"&#(x?)([0-9a-fA-F]{1,6});").unwrap().replace_all(&t, |c: &regex::Captures| {
+        u32::from_str_radix(&c[2], if c[1].is_empty() { 10 } else { 16 }).ok().and_then(char::from_u32).map(String::from).unwrap_or_default()
+    }).to_string();
+    t = t.replace("&amp;", "&");
     Regex::new(r"[ \t]+").unwrap().replace_all(&t, " ").trim().to_string()
 }
 
@@ -334,5 +357,8 @@ mod tests {
         if let Some(d) = dirs::download_dir() { assert!(allowed(Some(&json!(d.join("x.txt").to_string_lossy()))).is_some()); }
     }
     #[test]
-    fn text() { assert_eq!(plain("<b>Hi</b> &amp; you"), "Hi & you"); }
+    #[ignore] // needs the internet: cargo test -- --ignored
+    fn search_online() { let r = web_search(json!({"query": "the stupid company"}).as_object().unwrap()).unwrap(); println!("{r}"); assert!(r.as_array().unwrap().len() > 0); }
+    #[test]
+    fn text() { assert_eq!(plain("<b>Hi</b> &amp; you&#32;&#0183;&#x27;"), "Hi & you ·'"); }
 }

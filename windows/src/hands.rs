@@ -159,6 +159,7 @@ mod imp {
         let vk: u16 = match *last {
             "return" | "enter" => VK_RETURN, "tab" => VK_TAB, "space" => VK_SPACE, "delete" | "backspace" => VK_BACK, "forwarddelete" | "del" => VK_DELETE,
             "escape" | "esc" => VK_ESCAPE, "left" => VK_LEFT, "right" => VK_RIGHT, "up" => VK_UP, "down" => VK_DOWN,
+            "shift" => VK_SHIFT, "ctrl" | "control" | "cmd" | "command" => VK_CONTROL, "alt" | "option" => VK_MENU, "win" | "windows" => VK_LWIN,
             "pageup" => VK_PRIOR, "pagedown" => VK_NEXT, "home" => VK_HOME, "end" => VK_END,
             k if k.len() == 1 && k.as_bytes()[0].is_ascii_alphanumeric() => k.to_ascii_uppercase().as_bytes()[0] as u16,
             k if k.starts_with('f') && k[1..].parse::<u16>().map(|n| (1..=12).contains(&n)).unwrap_or(false) => VK_F1 + k[1..].parse::<u16>().unwrap() - 1,
