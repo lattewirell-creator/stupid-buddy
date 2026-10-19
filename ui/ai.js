@@ -8,8 +8,8 @@ const AI = (() => {
   /** Where the brain runs: 'ollama' (this Mac) or an online service with a free key. */
   const PROVIDERS = {
     ollama: { name: 'This Mac (Ollama)', free: 'Free, private, nothing leaves your Mac' },
-    gemini: { name: 'Google Gemini', free: 'Free key, generous daily amount', keyUrl: 'https://aistudio.google.com/apikey', model: 'gemini-2.5-flash' },
-    groq: { name: 'Groq', free: 'Free key, very fast', keyUrl: 'https://console.groq.com/keys', model: 'llama-3.3-70b-versatile' },
+    gemini: { name: 'Google Gemini', free: 'Free key, generous daily amount', keyUrl: 'https://aistudio.google.com/apikey', model: 'gemini-2.5-flash', vision: 'gemini-2.5-flash' },
+    groq: { name: 'Groq', free: 'Free key, very fast', keyUrl: 'https://console.groq.com/keys', model: 'llama-3.3-70b-versatile', vision: 'meta-llama/llama-4-scout-17b-16e-instruct' },
     openrouter: { name: 'OpenRouter', free: 'Free key, pick a model marked “free”', keyUrl: 'https://openrouter.ai/keys', model: 'meta-llama/llama-3.3-70b-instruct:free' },
   };
   const onPhone = window.__platform === 'android';
@@ -86,9 +86,14 @@ const AI = (() => {
     const toOpenAI = messages.map((m) => {
       if (m.role === 'tool') return { role: 'tool', tool_call_id: m.tool_call_id || m.tool_name, content: String(m.content) };
       if (m.role === 'assistant' && m.tool_calls) return { role: 'assistant', content: m.content || null, tool_calls: m.tool_calls.map((c, i) => ({ id: c.id || 'call_' + i, type: 'function', function: { name: c.function.name, arguments: JSON.stringify(c.function.arguments || {}) } })) };
+      // A screenshot goes along as an image part (Hands Buddy).
+      if (m.images && m.images.length) return { role: m.role, content: [{ type: 'text', text: String(m.content || '') }, ...m.images.map((b) => ({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b } }))] };
       return { role: m.role, content: m.content };
     });
-    const body = { model: model || PROVIDERS[p].model, messages: toOpenAI, temperature: 0.3, max_tokens: tools ? 1200 : 1600 };
+    // Text-only models can't see screenshots, so those steps use the service's model that can.
+    let use = model || PROVIDERS[p].model;
+    if (PROVIDERS[p].vision && messages.some((m) => m.images && m.images.length) && !/vision|vl\b|-vl|scout|maverick|gemini|gpt-4o|pixtral|gemma-3/i.test(use)) use = PROVIDERS[p].vision;
+    const body = { model: use, messages: toOpenAI, temperature: 0.3, max_tokens: tools ? 1200 : 1600 };
     if (tools) body.tools = tools;
     let stopped = false; const onAbort = () => { stopped = true; }; if (signal) signal.addEventListener('abort', onAbort, { once: true });
     let r;

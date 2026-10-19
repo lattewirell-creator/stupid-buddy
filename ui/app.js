@@ -5,9 +5,10 @@ const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const ballEl = (color) => { const b = el('span', 'ball'); b.append(el('i'), el('i')); if (color) b.style.setProperty('--c', color); return b; };
 
-let models = Object.assign({ lead: AI.DEFAULT_MODEL, files: AI.DEFAULT_MODEL, writer: AI.DEFAULT_MODEL, web: AI.DEFAULT_MODEL }, JSON.parse(localStorage.getItem('models') || '{}'));
+let models = Object.assign({ lead: AI.DEFAULT_MODEL, files: AI.DEFAULT_MODEL, writer: AI.DEFAULT_MODEL, web: AI.DEFAULT_MODEL, hands: AI.DEFAULT_MODEL }, JSON.parse(localStorage.getItem('models') || '{}'));
 let busy = null, ready = false;
 const onPhone = window.__platform === 'android';
+if (onPhone) delete models.hands;
 if (onPhone) { document.body.classList.remove('closed'); for (const k of Object.keys(models)) if (/qwen|llama3|:8b/.test(models[k]) && !/70b|versatile/.test(models[k])) models[k] = AI.PROVIDERS[AI.provider()].model; }
 
 /* ---------------- open / close, and dragging the ball ---------------- */
@@ -162,6 +163,7 @@ async function ask(text) {
   }
 }
 function stop() { if (busy) { busy.abort(); AI.stop(); } }
+Native.on('hands:stopped', stop);   // you pressed Esc while Hands Buddy was working
 function sendButton(stopping) {
   const b = $('send'); b.classList.toggle('stop', stopping); b.setAttribute('aria-label', stopping ? 'Stop' : 'Send');
   b.innerHTML = stopping ? '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M5 12h13M12.5 6l6 6-6 6"/></svg>';
@@ -227,7 +229,6 @@ async function showSettings() {
   renderRoots(await Native.call('files.roots').catch(() => []));
   const team = $('teamList'); team.replaceChildren();
   for (const h of Object.values(HELPERS)) { const r = el('div', 'row'); r.appendChild(ballEl(h.color)); const g = el('div', 'grow'); g.append(el('div', null, h.name), el('small', null, 'Can: ' + h.job)); r.appendChild(g); team.appendChild(r); }
-  if (!onPhone) { const hands = el('div', 'row'); hands.appendChild(ballEl('#C8606F')); const hg = el('div', 'grow'); hg.append(el('div', null, 'Hands Buddy'), el('small', null, 'Clicks and types in other apps. Coming in a later version.')); hands.appendChild(hg); team.appendChild(hands); }
 }
 function renderRoots(list) { $('roots').textContent = list.join(' · '); }
 $('addRoot').addEventListener('click', async () => renderRoots(await Native.call('files.addRoot').catch(() => [])));

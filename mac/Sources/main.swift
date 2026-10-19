@@ -37,6 +37,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   var web: WKWebView!
   let tools = Tools()
   lazy var physics = Physics(app: self)
+  lazy var hands = Hands(app: self)
   static let ballSize = NSSize(width: 92, height: 92)
   static let openSize = NSSize(width: 440, height: 660)
 
@@ -120,7 +121,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     case "quit": done(true, true); NSApp.terminate(nil)
     case "log": print("[buddy] \(msg["text"] as? String ?? "")"); fflush(stdout); done(true, true)
     default:
-      if op.hasPrefix("hands.") { done(false, "Hands Buddy isn’t in this version yet.") }
+      if op.hasPrefix("hands.") { hands.handle(op, msg, done: done) }
       else if op.hasPrefix("keys.") || op == "ai.request" { Cloud.handle(op, msg, done: done) }
       else { tools.handle(op, msg, done: done) }
     }

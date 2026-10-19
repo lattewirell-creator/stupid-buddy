@@ -19,6 +19,10 @@ const Native = (() => {
 /* ---------------- the helpers ---------------- */
 const fn = (name, description, props = {}, required = Object.keys(props)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties: props, required } } });
 const str = (description) => ({ type: 'string', description });
+const num = (description) => ({ type: 'number', description });
+let screen = { width: 1280, height: 800 };   // the last screenshot Hands Buddy looked at
+const grid = (v, size) => Math.round(Math.max(0, Math.min(1000, Number(v) || 0)) / 1000 * size);
+const handsAct = (op, a) => Native.call(op, { x: grid(a.x, screen.width), y: grid(a.y, screen.height), what: String(a.what || ''), amount: Math.round(Number(a.amount) || -5) });
 
 const TOOLS = {
   list_folder: { def: fn('list_folder', 'List the files and folders inside a folder.', { path: str('Folder path, like ~/Downloads') }), run: (a) => Native.call('files.list', { path: a.path }), say: (a) => `Looking in ${a.path}` },
@@ -35,6 +39,15 @@ const TOOLS = {
   web_search: { def: fn('web_search', 'Search the web. Returns titles, links and snippets.', { query: str('What to search for') }), run: (a) => Native.call('web.search', { query: a.query }), say: (a) => `Searching the web for “${a.query}”` },
   read_web_page: { def: fn('read_web_page', 'Read the text of a web page.', { url: str('Full https:// link') }), run: (a) => Native.call('web.fetch', { url: a.url }), say: (a) => `Reading ${host(a.url)}` },
   open_in_browser: { def: fn('open_in_browser', 'Open a page in The Stupid Browser for the user.', { url: str('Full https:// link') }), run: (a) => Native.call('web.open', { url: a.url }), say: (a) => `Opening ${host(a.url)} in the browser` },
+  // Hands Buddy: x and y are on a 0–1000 grid over the screenshot (0,0 top-left, 1000,1000 bottom-right).
+  look_at_screen: { def: fn('look_at_screen', 'Take a fresh look at the screen.'), run: () => 'ok', say: () => 'Looking at the screen' },
+  click: { def: fn('click', 'Click a spot on the screen.', { x: num('0–1000, left to right'), y: num('0–1000, top to bottom'), what: str('What you are clicking, like “Send button” or “Search field”') }), run: (a) => handsAct('hands.click', a), say: (a) => `Clicking ${a.what || 'there'}` },
+  double_click: { def: fn('double_click', 'Double-click a spot (to open an item).', { x: num('0–1000'), y: num('0–1000'), what: str('What you are double-clicking') }), run: (a) => handsAct('hands.doubleClick', a), say: (a) => `Double-clicking ${a.what || 'there'}` },
+  right_click: { def: fn('right_click', 'Right-click a spot to open its menu.', { x: num('0–1000'), y: num('0–1000'), what: str('What you are right-clicking') }), run: (a) => handsAct('hands.rightClick', a), say: (a) => `Right-clicking ${a.what || 'there'}` },
+  type_text: { def: fn('type_text', 'Type text where the cursor is (click the field first).', { text: str('The text to type') }), run: (a) => Native.call('hands.type', { text: String(a.text || '') }), say: (a) => `Typing “${String(a.text || '').slice(0, 40)}”` },
+  press_keys: { def: fn('press_keys', 'Press a key or shortcut, like return, tab, esc, cmd+c, cmd+v, cmd+a, cmd+w, down.', { keys: str('The key or shortcut') }), run: (a) => Native.call('hands.key', { keys: String(a.keys || '') }), say: (a) => `Pressing ${a.keys}` },
+  scroll: { def: fn('scroll', 'Scroll at a spot. Negative amount scrolls down, positive scrolls up.', { x: num('0–1000'), y: num('0–1000'), amount: num('Lines, like -5 (down) or 5 (up)') }, ['x', 'y', 'amount']), run: (a) => handsAct('hands.scroll', a), say: (a) => (a.amount > 0 ? 'Scrolling up' : 'Scrolling down') },
+  open_app: { def: fn('open_app', 'Open (or switch to) an app by its name, like Notes, Safari, Calendar.', { name: str('The app name') }), run: (a) => Native.call('hands.openApp', { name: String(a.name || '') }), say: (a) => `Opening ${a.name}` },
 };
 const short = (p) => String(p || '').split('/').slice(-2).join('/');
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -49,7 +62,11 @@ const HELPERS = {
   web: { name: 'Web Buddy', color: '#5B87B5', mustLook: true, job: 'looks things up on the web, compares options and gathers facts with sources',
     tools: ['web_search', 'read_web_page', 'open_in_browser'],
     rules: 'Search, then read the one to three best pages before answering. Give short facts with the source links. Never buy, sign in or fill in forms.' },
+  hands: { name: 'Hands Buddy', color: '#C8606F', job: 'uses other apps on the Mac by looking at the screen, clicking and typing (only for things the other helpers can’t do)',
+    tools: ['look_at_screen', 'click', 'double_click', 'right_click', 'type_text', 'press_keys', 'scroll', 'open_app'],
+    rules: 'You see a screenshot after each action. Spots are given as x and y on a 0–1000 grid over the screenshot (0,0 is the top-left corner, 1000,1000 the bottom-right). Do one or two actions at a time, then check the new screenshot. To start, open the app you need with open_app. Always say in “what” what you click. Never type passwords, card numbers or codes; if a password is needed, stop and ask the user to type it. Don’t send, buy, post or delete anything the user didn’t clearly ask for. If you are stuck after a few tries, stop and say what you saw.' },
 };
+if (window.__platform === 'android') delete HELPERS.hands;   // a phone can't lend Buddy its hands
 
 /* ---------------- running a helper ---------------- */
 async function context() {
@@ -60,7 +77,30 @@ async function context() {
 const clip = (v) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > 7000 ? s.slice(0, 7000) + '…(cut)' : s; };
 
 /** One helper does one task, step by step. ui: { step(text, isError) }. Returns its final answer. */
-async function runHelper(key, task, ui, { models, signal }) {
+async function runHelper(key, task, ui, opts) {
+  if (key !== 'hands') return runSteps(key, task, ui, opts);
+  // Hands Buddy needs two Mac permissions and your OK, shows a red bar while it works, and Esc stops it.
+  const p = await Native.call('hands.permissions').catch(() => ({}));
+  if (!p.screen || !p.control) {
+    Native.call('hands.askPermissions').catch(() => {});
+    return 'I need two permissions first. In System Settings → Privacy & Security, turn on The Stupid Buddy under both “Screen & System Audio Recording” and “Accessibility”, then quit and reopen Buddy and ask again.';
+  }
+  try { await Native.call('hands.start', { task }); }
+  catch (e) { return e.message === 'permissions' ? 'I still need the Screen Recording and Accessibility permissions in System Settings.' : e.message; }
+  try { return await runSteps(key, task, ui, opts); }
+  finally { Native.call('hands.stop').catch(() => {}); }
+}
+
+/** Hands Buddy looks: a fresh screenshot replaces the older ones (they're big). */
+async function look(messages) {
+  const s = await Native.call('hands.shot');
+  screen = { width: s.width, height: s.height };
+  for (const m of messages) if (m.images) { delete m.images; m.content = '(an older screenshot)'; }
+  messages.push({ role: 'user', content: 'This is the screen now.', images: [s.image] });
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function runSteps(key, task, ui, { models, signal }) {
   const h = HELPERS[key];
   const messages = [
     { role: 'system', content: `You are ${h.name}, one of Buddy's helpers. Your job: you ${h.job}. ${h.rules}\n${await context()}\nWork in small steps with your tools. When the task is done, reply with a short, plain summary of what you did or found (no tool call).` },
@@ -70,8 +110,11 @@ async function runHelper(key, task, ui, { models, signal }) {
   const wantsFile = /\b(save|file|document|doc|docx|pdf|\.md|\.txt|folder|desktop|documents)\b/i.test(task);
   const allowedTools = h.tools.filter((t) => !(key === 'writer' && t === 'save_text_file' && !wantsFile));
   const tools = allowedTools.map((t) => TOOLS[t].def);
-  for (let step = 0; step < 12; step++) {
+  const hands = key === 'hands';
+  let needLook = hands;
+  for (let step = 0; step < (hands ? 25 : 12); step++) {
     if (signal.aborted) throw new Error('stopped');
+    if (needLook) { await wait(600); await look(messages); needLook = false; }
     const r = await AI.chat({ model: models[key], messages, tools, signal });
     if (!r.toolCalls.length) {
       // Small local AIs like to answer from memory; helpers that must look things up get sent to their tools once.
@@ -86,7 +129,8 @@ async function runHelper(key, task, ui, { models, signal }) {
       else {
         ui.step(tool.say(c.args || {}));
         try { result = await tool.run(c.args || {}); }
-        catch (e) { result = 'Error: ' + e.message; ui.step(e.message, true); }
+        catch (e) { result = 'Error: ' + e.message; ui.step(e.message, true); if (/isn’t allowed to act/.test(e.message)) throw new Error('stopped'); }
+        if (hands) needLook = true;
       }
       messages.push({ role: 'tool', tool_call_id: c.id, tool_name: c.name, content: clip(result) });
     }
