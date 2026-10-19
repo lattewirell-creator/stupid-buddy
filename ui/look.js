@@ -3,6 +3,7 @@
 'use strict';
 const Look = (() => {
   const COLORS = { clay: '#D97757', cream: '#EBC39D', cocoa: '#8B5E45', sky: '#4F8DE0', mint: '#3FB98A', grape: '#8A5CD6', rose: '#E0607E', sun: '#E9A23B', night: '#3B3F58', snow: '#C9CDD6' };
+  const SHAPES = { ball: ['🟠', 'Ball'], eye: ['👁️', 'Eye'] };   // the eye is The Stupid Company's logo
   const EYES = { dot: ['•', 'Dots'], round: ['👀', 'Round'], sleepy: ['😌', 'Sleepy'], wide: ['😳', 'Wide'], happy: ['😊', 'Happy'] };
   const MOUTHS = { none: ['✖', 'None'], smile: ['🙂', 'Smile'], grin: ['😁', 'Grin'], open: ['😮', 'Open'] };
   const HATS = { none: ['✖', 'None'], tophat: ['🎩', 'Top hat'], cap: ['🧢', 'Cap'], crown: ['👑', 'Crown'], grad: ['🎓', 'Graduate'], sunhat: ['👒', 'Sun hat'], bow: ['🎀', 'Bow'], flower: ['🌼', 'Flower'], headphones: ['🎧', 'Headphones'] };
@@ -14,12 +15,13 @@ const Look = (() => {
     direct: ['To the point', 'short and direct, with no small talk'],
     teacher: ['Teacher', 'a patient teacher who explains things simply'],
   };
-  const DEFAULTS = { name: 'Buddy', color: 'clay', eyes: 'dot', mouth: 'none', hat: 'none', mood: 'friendly', custom: '', call: '' };
+  const DEFAULTS = { name: 'Buddy', color: 'clay', shape: 'ball', eyes: 'dot', mouth: 'none', hat: 'none', mood: 'friendly', custom: '', call: '' };
 
   function get() {
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem('look') || '{}') || {}; } catch {}
     const L = Object.assign({}, DEFAULTS, saved);
+    if (!SHAPES[L.shape]) L.shape = 'ball';
     if (!EYES[L.eyes]) L.eyes = 'dot'; if (!MOUTHS[L.mouth]) L.mouth = 'none'; if (!HATS[L.hat]) L.hat = 'none'; if (!MOODS[L.mood]) L.mood = 'friendly';
     if (!COLORS[L.color] && !/^#[0-9a-f]{6}$/i.test(L.color)) L.color = 'clay';
     L.name = String(L.name || '').trim().slice(0, 20) || 'Buddy';
@@ -30,14 +32,16 @@ const Look = (() => {
   const color = () => { const c = get().color; return COLORS[c] || c; };
   const name = () => get().name;
 
-  /** Puts Buddy's look on one ball: colour, eyes, mouth and hat. */
+  /** Puts Buddy's look on one ball: shape, colour, eyes, mouth and hat. */
   function dress(b) {
     if (!b) return;
     const L = get();
+    const eye = L.shape === 'eye';
     b.style.setProperty('--c', color());
-    for (const k of Object.keys(EYES)) b.classList.toggle('eyes-' + k, L.eyes === k && k !== 'dot');
+    b.classList.toggle('shape-eye', eye);
+    for (const k of Object.keys(EYES)) b.classList.toggle('eyes-' + k, !eye && L.eyes === k && k !== 'dot');
     let mouth = b.querySelector(':scope > .mouth');
-    if (L.mouth === 'none') mouth && mouth.remove();
+    if (L.mouth === 'none' || eye) mouth && mouth.remove();
     else { if (!mouth) { mouth = document.createElement('s'); b.appendChild(mouth); } mouth.className = 'mouth ' + L.mouth; }
     let hat = b.querySelector(':scope > .hat');
     if (L.hat === 'none') hat && hat.remove();
@@ -97,8 +101,13 @@ const Look = (() => {
     const any = mk('input', 'look-swatch any'); any.type = 'color'; any.title = 'Any colour'; any.value = /^#/.test(L.color) ? L.color : '#7a9e7e';
     any.addEventListener('input', () => { save({ color: any.value }); mark(); }); sw.appendChild(any);
     row('Colour', sw); mark();
-    row('Eyes', chips(EYES, L.eyes, 'eyes'));
-    row('Mouth', chips(MOUTHS, L.mouth, 'mouth'));
+    const shapes = chips(SHAPES, L.shape, 'shape');
+    shapes.addEventListener('click', () => setTimeout(() => render(box)));   // the Eye has no eyes or mouth to pick
+    row('Shape', shapes);
+    if (L.shape !== 'eye') {
+      row('Eyes', chips(EYES, L.eyes, 'eyes'));
+      row('Mouth', chips(MOUTHS, L.mouth, 'mouth'));
+    }
     row('Hat', chips(HATS, L.hat, 'hat'));
 
     const moods = mk('div', 'look-chips');
