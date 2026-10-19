@@ -1,0 +1,52 @@
+plugins { id 'com.android.application' }
+
+// Release signing: keystore.properties (not in git) → storeFile, storePassword, keyAlias, keyPassword
+def ks = new Properties()
+def ksFile = rootProject.file('keystore.properties')
+if (ksFile.exists()) ksFile.withInputStream { ks.load(it) }
+
+android {
+    namespace 'com.emil.stupidbuddy'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.emil.stupidbuddy'
+        minSdk 26
+        targetSdk 36
+        versionCode 3
+        versionName '0.3.0'
+    }
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile file(ks['storeFile'])
+                storePassword ks['storePassword']
+                keyAlias ks['keyAlias']
+                keyPassword ks['keyPassword']
+            }
+            enableV2Signing true
+            enableV3Signing true
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (ksFile.exists()) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    sourceSets { main { assets.srcDirs += ["$buildDir/generated/web"] } }
+}
+
+dependencies {
+    implementation 'androidx.documentfile:documentfile:1.0.1'   // folders you allow (Storage Access Framework)
+}
+
+// The UI is the Mac app's own (../../ui), plus the phone's bridge (web/).
+tasks.register('copyWeb', Copy) {
+    into "$buildDir/generated/web"
+    from(rootProject.file('../ui')) { into 'ui' }
+    from(file('web')) { into 'ui' }
+}
+preBuild.dependsOn 'copyWeb'

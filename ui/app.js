@@ -7,10 +7,12 @@ const ballEl = (color) => { const b = el('span', 'ball'); b.append(el('i'), el('
 
 let models = Object.assign({ lead: AI.DEFAULT_MODEL, files: AI.DEFAULT_MODEL, writer: AI.DEFAULT_MODEL, web: AI.DEFAULT_MODEL }, JSON.parse(localStorage.getItem('models') || '{}'));
 let busy = null, ready = false;
+const onPhone = window.__platform === 'android';
+if (onPhone) { document.body.classList.remove('closed'); for (const k of Object.keys(models)) if (/qwen|llama3|:8b/.test(models[k]) && !/70b|versatile/.test(models[k])) models[k] = AI.PROVIDERS[AI.provider()].model; }
 
 /* ---------------- open / close, and dragging the ball ---------------- */
 function open() { document.body.classList.remove('closed'); Native.call('window', { mode: 'open' }); setTimeout(() => $('input').focus(), 120); }
-function close() { document.body.classList.add('closed'); Native.call('window', { mode: 'ball' }); }
+function close() { if (onPhone) return; document.body.classList.add('closed'); Native.call('window', { mode: 'ball' }); }
 {
   // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
   const ball = $('ball'); let start = null, moved = false, samples = [];
@@ -42,6 +44,43 @@ function close() { document.body.classList.add('closed'); Native.call('window', 
 $('closeBtn').addEventListener('click', close);
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.body.classList.contains('closed')) { if (busy) stop(); else close(); } });
 
+/* ---------------- on the phone: throw Buddy around the screen ---------------- */
+// Grab the ball in the header and fling it: it flies, bounces off the edges and lands above the box you type in.
+if (onPhone) {
+  const head = $('headBall');
+  head.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const r = head.getBoundingClientRect(), size = 72;
+    const b = ballEl(); b.classList.add('float-ball'); document.body.appendChild(b);
+    let x = r.left + r.width / 2 - size / 2, y = r.top + r.height / 2 - size / 2, vx = 0, vy = 0, angle = 0, samples = [], held = true, raf = 0, last = 0;
+    const place = () => { b.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg)`; };
+    const floor = () => $('ask').getBoundingClientRect().top - size - 6;
+    place(); head.style.visibility = 'hidden';
+    const move = (ev) => { x = ev.clientX - size / 2; y = ev.clientY - size / 2; samples.push({ t: performance.now(), x: ev.clientX, y: ev.clientY }); while (samples.length > 2 && performance.now() - samples[0].t > 90) samples.shift(); place(); };
+    const up = () => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); held = false;
+      const a = samples[0], z = samples[samples.length - 1];
+      if (a && z && z.t > a.t) { vx = (z.x - a.x) / ((z.t - a.t) / 1000); vy = (z.y - a.y) / ((z.t - a.t) / 1000); }
+      last = performance.now(); raf = requestAnimationFrame(tick);
+    };
+    const tick = (now) => {
+      const dt = Math.min(1 / 30, (now - last) / 1000); last = now;
+      vy += 2600 * dt; vx *= 0.995; x += vx * dt; y += vy * dt;
+      const W = innerWidth - size, F = floor(); let hit = 0, onFloor = false;
+      if (x < 0) { x = 0; hit = Math.abs(vx); vx = -vx * 0.52; } if (x > W) { x = W; hit = Math.abs(vx); vx = -vx * 0.52; }
+      if (y < 0) { y = 0; hit = Math.max(hit, Math.abs(vy)); vy = -vy * 0.52; }
+      if (y >= F) { y = F; if (vy > 0) { hit = Math.max(hit, Math.abs(vy)); vy = -vy * 0.52; } if (Math.abs(vy) < 120) { vy = 0; onFloor = true; vx *= 0.82; } }
+      angle += (vx / 60) / (size / 2) * (180 / Math.PI); place();
+      if (hit > 650) { b.classList.remove('squash'); void b.offsetWidth; b.classList.add('squash'); }
+      if (onFloor && Math.abs(vx) < 15) { b.classList.add('happy'); setTimeout(() => b.classList.remove('happy'), 900); return; }
+      raf = requestAnimationFrame(tick);
+    };
+    // Tap the ball when it's resting to put Buddy back in the header.
+    b.addEventListener('pointerdown', (ev) => { ev.stopPropagation(); if (held) return; cancelAnimationFrame(raf); held = true; samples = []; vx = vy = 0; addEventListener('pointermove', move); addEventListener('pointerup', (u) => { if (samples.length < 2) { b.remove(); head.style.visibility = ''; removeEventListener('pointermove', move); } else up(u); }, { once: true }); });
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  });
+}
+
 /* ---------------- Buddy's face ---------------- */
 const faces = [$('ball'), $('headBall')];
 const face = (state) => faces.forEach((f) => { f.className = f.className.replace(/\b(blink|happy|sleepy|think|work)\b/g, '').trim(); if (state) f.classList.add(...state.split(' ')); });
@@ -70,7 +109,7 @@ function note(text, action) { const n = el('div', 'note', text); if (action) { c
 function greet() {
   log.replaceChildren();
   say('bot', `Hi! I’m **Buddy**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you\nTell me what you need. I’ll always ask before moving or deleting anything.`);
-  chips(['Tidy my Downloads folder', 'What’s in my Documents?', 'Find the best free note apps for Mac', 'Write a short thank-you email']);
+  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : 'Find the best free note apps for Mac', 'Write a short thank-you email']);
 }
 function chips(list) {
   const box = $('chips'); box.replaceChildren();
@@ -188,7 +227,7 @@ async function showSettings() {
   renderRoots(await Native.call('files.roots').catch(() => []));
   const team = $('teamList'); team.replaceChildren();
   for (const h of Object.values(HELPERS)) { const r = el('div', 'row'); r.appendChild(ballEl(h.color)); const g = el('div', 'grow'); g.append(el('div', null, h.name), el('small', null, 'Can: ' + h.job)); r.appendChild(g); team.appendChild(r); }
-  const hands = el('div', 'row'); hands.appendChild(ballEl('#C8606F')); const hg = el('div', 'grow'); hg.append(el('div', null, 'Hands Buddy'), el('small', null, 'Clicks and types in other apps. Coming in a later version.')); hands.appendChild(hg); team.appendChild(hands);
+  if (!onPhone) { const hands = el('div', 'row'); hands.appendChild(ballEl('#C8606F')); const hg = el('div', 'grow'); hg.append(el('div', null, 'Hands Buddy'), el('small', null, 'Clicks and types in other apps. Coming in a later version.')); hands.appendChild(hg); team.appendChild(hands); }
 }
 function renderRoots(list) { $('roots').textContent = list.join(' · '); }
 $('addRoot').addEventListener('click', async () => renderRoots(await Native.call('files.addRoot').catch(() => [])));

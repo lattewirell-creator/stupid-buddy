@@ -116,3 +116,15 @@ select { font: inherit; color: var(--text); background: var(--surface); border: 
 .keyrow input { flex: 1; min-width: 0; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; outline: 0; }
 .keyrow input:focus { border-color: var(--accent); }
 .link.left { margin: 4px 0 0; color: var(--accent); font-weight: 600; }
+
+/* ---------------- on the phone: the panel is the whole app ---------------- */
+html.android, html.android body { background: var(--bg); user-select: none; -webkit-tap-highlight-color: transparent; }
+html.android #panel { inset: 0; border: 0; border-radius: 0; box-shadow: none; animation: none; }
+html.android #closeBtn, html.android #quitBtn, html.android #ball { display: none !important; }
+html.android .head { padding: 12px 8px 10px 14px; }
+html.android #headBall { width: 44px; height: 44px; touch-action: none; }
+html.android #input { font-size: 16px; }
+html.android .chip { height: 34px; font-size: 14px; }
+.float-ball { position: fixed; left: 0; top: 0; width: 72px; height: 72px; z-index: 100; touch-action: none; box-shadow: inset 0 -5px 10px rgba(0,0,0,.16), 0 10px 22px rgba(80,40,20,.3); }
+.float-ball.squash { animation: squash-scale .26s var(--ease); }
+@keyframes squash-scale { 30% { scale: 1.18 .8; } 65% { scale: .94 1.06; } }

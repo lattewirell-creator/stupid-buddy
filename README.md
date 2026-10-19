@@ -1,6 +1,6 @@
 # The Stupid Buddy
 
-Buddy from The Stupid Browser, living on your Mac's desktop, with a small team that does work for you.
+Buddy from The Stupid Browser, living on your Mac's desktop (and your Android phone), with a small team that does work for you.
 
 - **File Buddy** finds, reads, sorts, renames and tidies files
 - **Writer Buddy** writes emails, notes, summaries and documents
@@ -25,10 +25,12 @@ For This Mac: install Ollama, then `ollama pull qwen3-vl:8b-instruct` (6 GB). On
 
 ## Install
 
-Download `The.Stupid.Buddy.Mac.zip`, unzip it and drag The Stupid Buddy into Applications. macOS 14 or newer, Apple chip or Intel. It isn't notarized by Apple: the first time, right-click the app → Open → Open.
+**Mac:** download `The.Stupid.Buddy.Mac.zip`, unzip it and drag The Stupid Buddy into Applications. macOS 14 or newer, Apple chip or Intel. It isn't notarized by Apple: the first time, right-click the app → Open → Open.
+
+**Android:** download `StupidBuddy-<version>-android.apk` on your phone and open it (Android 8 or newer). The phone uses an online AI with a free key (Groq, Gemini or OpenRouter), kept in the phone's secure storage. File Buddy works in folders you allow; deleting isn't offered on the phone.
 
 ## Build
 
-`bash mac/build.sh` → `mac/build/The Stupid Buddy.app`. Swift (the window, files, web, Keychain) and plain HTML/JS (`ui/`: the team and the AI).
+Mac: `bash mac/build.sh` → `mac/build/The Stupid Buddy.app`. Android: `cd android && ./gradlew assembleRelease`. Both share `ui/` (plain HTML/JS: the team and the AI); the Mac side is Swift, the phone side Java.
 
 Free and open source under the MIT license.

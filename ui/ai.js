@@ -12,7 +12,9 @@ const AI = (() => {
     groq: { name: 'Groq', free: 'Free key, very fast', keyUrl: 'https://console.groq.com/keys', model: 'llama-3.3-70b-versatile' },
     openrouter: { name: 'OpenRouter', free: 'Free key, pick a model marked “free”', keyUrl: 'https://openrouter.ai/keys', model: 'meta-llama/llama-3.3-70b-instruct:free' },
   };
-  const provider = () => localStorage.getItem('provider') || 'ollama';
+  const onPhone = window.__platform === 'android';
+  if (onPhone) delete PROVIDERS.ollama;   // no Ollama on a phone: an online AI with a free key
+  const provider = () => { const p = localStorage.getItem('provider'); return PROVIDERS[p] ? p : onPhone ? 'groq' : 'ollama'; };
 
   async function status() {
     const p = provider();

@@ -1,3 +1,8 @@
 .preview/
 mac/build/
 release/
+android/keystore.properties
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/

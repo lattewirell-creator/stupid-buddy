@@ -6,7 +6,7 @@
 <title>The Stupid Buddy</title>
 <meta name="description" content="Buddy lives on your Mac's desktop with a small AI team that tidies files, writes for you and looks things up. Free, and it always asks first.">
 <meta property="og:title" content="The Stupid Buddy">
-<meta property="og:description" content="Your desktop got a buddy. And Buddy got a team. Free for Mac.">
+<meta property="og:description" content="Your desktop got a buddy. And Buddy got a team. Free for Mac and Android.">
 <meta property="og:image" content="https://stupidbuddy.vercel.app/img/icon.png">
 <meta name="theme-color" content="#FAF9F5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1F1E1D" media="(prefers-color-scheme: dark)">
@@ -56,6 +56,9 @@ h1 em { color: var(--accent); }
 .cta { display: inline-flex; align-items: center; gap: 12px; margin-top: 32px; height: 56px; padding: 0 28px; border-radius: 999px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
   box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 35%, transparent); transition: transform .15s; }
 .cta:hover { transform: translateY(-2px); }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+.ctas .cta { margin-top: 0; }
+.cta.alt { background: var(--surface); color: var(--text); border: 1px solid var(--line); box-shadow: none; }
 .cta span { font-weight: 400; opacity: .8; font-size: 14px; }
 .small { margin-top: 14px; font-size: 14px; color: var(--muted); }
 .hero-art { display: grid; place-items: center; gap: 22px; }
@@ -141,9 +144,12 @@ footer .grow { flex: 1; }
   <div class="wrap hero">
     <div>
       <h1>Your desktop got a buddy.<br><em>And Buddy got a team.</em></h1>
-      <p class="lead">Buddy from The Stupid Browser now lives on your Mac. Tell it what you need and its helpers get to work: tidying files, writing for you and looking things up. It always asks before it moves or deletes anything.</p>
-      <a class="cta" data-dl href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Download for Mac <span id="dlSize">.zip</span></a>
-      <div class="small" id="dlNote">Free · macOS 14 or newer · Apple chip and Intel</div>
+      <p class="lead">Buddy from The Stupid Browser now lives on your Mac and your Android phone. Tell it what you need and its helpers get to work: tidying files, writing for you and looking things up. It always asks before it moves or deletes anything.</p>
+      <div class="ctas">
+        <a class="cta" data-dl href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Download for Mac <span id="dlSize">.zip</span></a>
+        <a class="cta alt" data-apk href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Android <span id="apkSize">.apk</span></a>
+      </div>
+      <div class="small" id="dlNote">Free · Mac (macOS 14+, Apple chip and Intel) · Android 8+</div>
     </div>
     <div class="hero-art" aria-hidden="true">
       <span class="ball big"><i></i><i></i></span>
@@ -207,9 +213,9 @@ footer .grow { flex: 1; }
       <h2>Get Buddy going</h2>
       <p class="sub">About two minutes.</p>
       <div class="steps">
-        <div class="step"><p><b>Download</b> the app, unzip it and drag The Stupid Buddy into Applications. The first time, right-click it → Open → Open.</p></div>
+        <div class="step"><p><b>Download</b> it. Mac: unzip and drag The Stupid Buddy into Applications (first time: right-click → Open → Open). Android: open the APK on your phone and allow the install.</p></div>
         <div class="step"><p><b>Choose a brain.</b> Free online: get a key at Groq or Google and paste it in Buddy’s Settings. Or on your Mac: install <a href="https://ollama.com">Ollama</a> and run <code>ollama pull qwen3-vl:8b-instruct</code>.</p></div>
-        <div class="step"><p><b>Click the ball</b> in the corner of your screen and tell Buddy what you need.</p></div>
+        <div class="step"><p><b>Talk to Buddy.</b> On a Mac, click the ball in the corner of your screen. On a phone, just open the app (and fling Buddy’s ball around if you like).</p></div>
       </div>
     </div>
   </section>
@@ -241,7 +247,8 @@ footer .grow { flex: 1; }
 // The download button points straight at the newest release's zip.
 fetch('https://api.github.com/repos/lattewirell-creator/stupid-buddy/releases/latest').then((r) => (r.ok ? r.json() : null)).then((rel) => {
   if (!rel) return;
-  const zip = (rel.assets || []).find((a) => /\.zip$/.test(a.name));
+  const zip = (rel.assets || []).find((a) => /\.zip$/.test(a.name)), apk = (rel.assets || []).find((a) => /android\.apk$/.test(a.name));
+  if (apk) { document.querySelectorAll('[data-apk]').forEach((a) => { a.href = apk.browser_download_url; }); document.getElementById('apkSize').textContent = Math.max(0.1, Math.round(apk.size / 104857.6) / 10) + ' MB'; }
   if (zip) {
     document.querySelectorAll('[data-dl]').forEach((a) => { a.href = zip.browser_download_url; });
     document.getElementById('dlSize').textContent = zip.size ? Math.max(1, Math.round(zip.size / 1048576 * 10) / 10) + ' MB' : '.zip';

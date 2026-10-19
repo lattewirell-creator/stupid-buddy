@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Buddy" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackground">#1F1E1D</item>
+        <item name="android:colorAccent">#D97757</item>
+        <item name="android:statusBarColor">#1F1E1D</item>
+        <item name="android:navigationBarColor">#1F1E1D</item>
+    </style>
+</resources>
