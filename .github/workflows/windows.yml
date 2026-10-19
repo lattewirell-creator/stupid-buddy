@@ -34,6 +34,38 @@ jobs:
           $bad = $want | Where-Object { -not $text.Contains($_) }
           if ($bad) { Write-Error "Missing: $($bad -join ', ')"; exit 1 }
           if ($text -notmatch 'OK hands\.shot \{"height') { Write-Error "Hands Buddy couldn't take a screenshot"; exit 1 }
+      - name: Showcase (screenshots) and a throw
+        shell: pwsh
+        run: |
+          # The app shows its views one by one and logs "SHOT name"; this takes a picture of the screen each time.
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $shots = "$env:RUNNER_TEMP\shots"; New-Item -ItemType Directory -Force $shots | Out-Null
+          $log = "$env:RUNNER_TEMP\showcase.log"
+          $env:STUPID_BUDDY_SHOWCASE = "1"; $env:STUPID_BUDDY_SELFTEST = $null; $env:STUPID_BUDDY_LOG = $log; $env:STUPID_BUDDY_DATA = "$env:RUNNER_TEMP\buddy-show"
+          $p = Start-Process -FilePath target\release\stupid-buddy.exe -PassThru
+          $done = @{}
+          for ($i = 0; $i -lt 300 -and -not $p.HasExited; $i++) {
+            Start-Sleep -Milliseconds 300
+            if (Test-Path $log) { foreach ($line in Get-Content $log) { if ($line -match 'SHOT (\S+)' -and -not $done[$Matches[1]]) {
+              $name = $Matches[1]; $done[$name] = $true; Start-Sleep -Milliseconds 700
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+              $bmp.Save("$shots\$name.png"); Write-Host "Took $name ($($b.Width)x$($b.Height))" } } }
+          }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id }
+          Get-Content $log
+          # A throw: the ball should fly, bounce and land on the bottom of the screen.
+          $env:STUPID_BUDDY_SHOWCASE = $null; $env:STUPID_BUDDY_THROW = "1600,-1400"; $tlog = "$env:RUNNER_TEMP\throw.log"; $env:STUPID_BUDDY_LOG = $tlog
+          $p = Start-Process -FilePath target\release\stupid-buddy.exe -PassThru
+          for ($i = 0; $i -lt 40 -and -not $p.HasExited; $i++) { Start-Sleep -Milliseconds 500 }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id }
+          if (Test-Path $tlog) { Get-Content $tlog } else { Write-Host "The throw didn't log a landing" }
+          Write-Host "Work area: $([System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-screenshots
+          path: ${{ runner.temp }}/shots/*.png
       - name: Installer
         shell: pwsh
         run: |

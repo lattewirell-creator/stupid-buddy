@@ -202,7 +202,8 @@ fn banner(target: &EventLoopWindowTarget<Ev>) -> (Window, WebView) {
     let width = w.outer_size().width as i32;
     w.set_outer_position(PhysicalPosition::new((l + r) / 2 - width / 2, t + (6.0 * w.scale_factor()) as i32));
     let _ = w.set_ignore_cursor_events(true);
-    sys::hide_from_capture(sys::hwnd(&w), true);
+    // Screenshots skip the bar, except in the showcase test, where the screenshots are the point.
+    if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(sys::hwnd(&w), true); }
     let v = WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0))
         .with_html(r#"<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent;overflow:hidden"><div style="height:34px;border-radius:17px;background:rgba(214,77,61,.96);color:#fff;font:600 13px 'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center">Buddy is using your computer · press Esc to stop</div>"#)
         .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:"))
@@ -265,6 +266,16 @@ await T('files.read',{path:'~/Documents/Buddy self-test/hello.md'});await T('fil
 await T('web.search',{query:'the stupid company'});await T('keys.has',{provider:'groq'});await T('ollama.request',{path:'api/tags'});
 await T('hands.shot');await T('hands.start',{task:'self-test'});await T('hands.shot');await T('hands.key',{keys:'shift'});await T('hands.stop');
 await T('window',{mode:'open'});await T('window',{mode:'ball'});await L('DONE');Native.call('quit')})()"#.into());
+    } else if std::env::var("STUPID_BUDDY_SHOWCASE").is_ok() {
+        // Each "SHOT name" in the log is the moment the test machine photographs the screen (see windows.yml).
+        later(r#"(async()=>{const L=(t)=>Native.call('log',{text:t});const W=(ms)=>new Promise(r=>setTimeout(r,ms));const S=async(n)=>{await L('SHOT '+n);await W(2500)};
+localStorage.removeItem('look');Look.apply();await W(800);await S('1-ball');
+open();await W(1200);await S('2-panel');
+await showSettings();await W(500);Look.render(document.getElementById('lookBox'));await S('3-settings');
+localStorage.setItem('look',JSON.stringify({shape:'eye',color:'mint',hat:'crown',name:'Pip'}));Look.apply();Look.render(document.getElementById('lookBox'));await W(400);await S('4-eye-settings');
+hideSettings();close();await W(1200);await S('5-eye-ball');
+await Native.call('hands.start',{task:'showcase'});await W(800);await S('6-hands-bar');await Native.call('hands.stop');
+localStorage.removeItem('look');Look.apply();await L('DONE');Native.call('quit')})()"#.into());
     } else if let Ok(q) = std::env::var("STUPID_BUDDY_ASK") {
         let provider = std::env::var("STUPID_BUDDY_PROVIDER").unwrap_or_default();
         later(format!("Native.call('window',{{mode:'open'}});document.body.classList.remove('closed');window.__test({}, {})", json!(q), json!(provider)));
