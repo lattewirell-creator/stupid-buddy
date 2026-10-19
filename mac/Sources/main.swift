@@ -36,6 +36,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   var panel: BuddyPanel!
   var web: WKWebView!
   let tools = Tools()
+  lazy var physics = Physics(app: self)
   static let ballSize = NSSize(width: 92, height: 92)
   static let openSize = NSSize(width: 440, height: 660)
 
@@ -85,6 +86,13 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
 
   /// Dev self-test: STUPID_BUDDY_ASK="…" opens the panel, asks the team, prints each step and the answer, then quits.
   func webView(_ w: WKWebView, didFinish _: WKNavigation!) {
+    // Dev self-test: STUPID_BUDDY_THROW="vx,vy" throws the ball, prints where it goes, and quits when it lands.
+    if let t = ProcessInfo.processInfo.environment["STUPID_BUDDY_THROW"] {
+      let v = t.split(separator: ",").compactMap { Double($0) }
+      print("[buddy] start \(Int(panel.frame.minX)),\(Int(panel.frame.minY)) screen \(Int(panel.screen?.visibleFrame.minY ?? 0))…\(Int(panel.screen?.visibleFrame.maxX ?? 0))")
+      physics.release(vx: v.first ?? 0, vy: v.count > 1 ? v[1] : 0)
+      return
+    }
     guard let q = ProcessInfo.processInfo.environment["STUPID_BUDDY_ASK"] else { return }
     window(["mode": "open"])
     web.evaluateJavaScript("window.__test(\(json(q)), \(json(ProcessInfo.processInfo.environment["STUPID_BUDDY_PROVIDER"] ?? "")))", completionHandler: nil)
@@ -105,7 +113,8 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     let done: (Bool, Any?) -> Void = { [weak self] ok, v in DispatchQueue.main.async { self?.reply(id, ok, v) } }
     switch op {
     case "window": window(msg); done(true, true)
-    case "drag": drag(msg); done(true, true)
+    case "drag": physics.stop(); drag(msg); done(true, true)
+    case "release": physics.release(vx: msg["vx"] as? Double ?? 0, vy: msg["vy"] as? Double ?? 0); done(true, true)
     case "dragEnd": UserDefaults.standard.set(NSStringFromPoint(panel.frame.origin), forKey: "ballOrigin"); done(true, true)
     case "confirm": ask(title: msg["title"] as? String ?? "Allow this?", text: msg["text"] as? String ?? "", yes: msg["yes"] as? String ?? "Allow") { done(true, $0) }
     case "quit": done(true, true); NSApp.terminate(nil)
@@ -120,6 +129,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   /// "ball" (just Buddy) or "open" (the team panel), growing from the ball's corner of the screen.
   private func window(_ m: [String: Any]) {
     let open = (m["mode"] as? String) == "open"
+    if open { physics.stop() }
     let size = open ? App.openSize : App.ballSize
     let screen = panel.screen?.visibleFrame ?? NSScreen.main!.visibleFrame
     var f = panel.frame

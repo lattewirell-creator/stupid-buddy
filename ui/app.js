@@ -12,16 +12,32 @@ let busy = null, ready = false;
 function open() { document.body.classList.remove('closed'); Native.call('window', { mode: 'open' }); setTimeout(() => $('input').focus(), 120); }
 function close() { document.body.classList.add('closed'); Native.call('window', { mode: 'ball' }); }
 {
-  const ball = $('ball'); let start = null, moved = false;
-  ball.addEventListener('pointerdown', (e) => { start = { x: e.screenX, y: e.screenY }; moved = false; ball.setPointerCapture(e.pointerId); });
+  // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
+  const ball = $('ball'); let start = null, moved = false, samples = [];
+  ball.addEventListener('pointerdown', (e) => { start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); });
   ball.addEventListener('pointermove', (e) => {
     if (!start) return;
     const dx = e.screenX - start.x, dy = e.screenY - start.y;
     if (!moved && Math.hypot(dx, dy) < 4) return;
     moved = true; start = { x: e.screenX, y: e.screenY };
+    const now = performance.now(); samples.push({ t: now, x: e.screenX, y: e.screenY }); while (samples.length > 2 && now - samples[0].t > 90) samples.shift();
     Native.call('drag', { dx, dy });
   });
-  ball.addEventListener('pointerup', () => { if (!start) return; start = null; if (moved) Native.call('dragEnd'); else open(); });
+  ball.addEventListener('pointerup', () => {
+    ball.classList.remove('held');
+    if (!start) return; start = null;
+    if (!moved) { open(); return; }
+    const a = samples[0], b = samples[samples.length - 1], dt = Math.max(16, b.t - a.t) / 1000;
+    Native.call('release', { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt });
+  });
+  // Rolling: spin by how far it travels; squash on hard bumps.
+  let angle = 0, squashT;
+  Native.on('roll', (r) => {
+    angle += (r.vx / 60) / 36 * (180 / Math.PI);
+    ball.style.rotate = angle.toFixed(1) + 'deg';
+    if (r.hit > 650) { ball.classList.remove('squash'); void ball.offsetWidth; ball.classList.add('squash'); clearTimeout(squashT); squashT = setTimeout(() => ball.classList.remove('squash'), 260); face(r.hit > 1800 ? 'blink' : ''); }
+  });
+  Native.on('landed', () => { face('happy'); setTimeout(() => face(''), 900); });
 }
 $('closeBtn').addEventListener('click', close);
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.body.classList.contains('closed')) { if (busy) stop(); else close(); } });

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Stupid Buddy</title>
+<meta name="description" content="Buddy lives on your Mac's desktop with a small AI team that tidies files, writes for you and looks things up. Free, and it always asks first.">
+<meta property="og:title" content="The Stupid Buddy">
+<meta property="og:description" content="Your desktop got a buddy. And Buddy got a team. Free for Mac.">
+<meta property="og:image" content="https://stupidbuddy.vercel.app/img/icon.png">
+<meta name="theme-color" content="#FAF9F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1F1E1D" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="img/favicon.png">
+<style>
+@font-face { font-family: 'Newsreader'; src: url('fonts/Newsreader.ttf') format('truetype'); font-weight: 200 800; font-display: swap; }
+:root {
+  --bg: #FAF9F5; --surface: #FFFFFF; --surface-2: #F5F1E8; --line: #E3DFD3; --text: #191919; --text-2: #3D3929; --muted: #6F6B60;
+  --accent: #D97757; --accent-ink: #B65A3C; --accent-soft: rgba(217,119,87,.13); --sage: #6F9161; --plum: #9A6390; --sky: #5B87B5;
+  --serif: 'Newsreader', Georgia, serif; --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --shadow: 0 18px 50px rgba(61,57,41,.12), 0 2px 8px rgba(61,57,41,.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1F1E1D; --surface: #2B2A27; --surface-2: #33322E; --line: #3A3934; --text: #ECE9E1; --text-2: #D6D2C6; --muted: #A39E92; --accent-ink: #E99273;
+    --shadow: 0 18px 50px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.25); color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 400; letter-spacing: -.02em; margin: 0; }
+
+/* the ball */
+.ball { position: relative; display: inline-block; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c, var(--accent)) 62%, #fff), var(--c, var(--accent)) 70%);
+  box-shadow: inset 0 -6px 12px rgba(0,0,0,.14); }
+.ball i { position: absolute; top: 31%; width: 15%; height: 27%; border-radius: 999px; background: #fff; }
+.ball i:first-child { left: 29%; } .ball i:last-child { right: 29%; }
+.ball.big { width: 170px; height: 170px; box-shadow: inset 0 -10px 22px rgba(0,0,0,.16), 0 26px 50px rgba(120,60,30,.28); animation: float 3.2s ease-in-out infinite; }
+.ball.big i { animation: blink 4.2s infinite; }
+@keyframes float { 50% { transform: translateY(-10px); } }
+@keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.12); } }
+
+/* header */
+header.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+header.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 66px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; font: 500 20px/1 var(--serif); }
+.brand img { width: 32px; height: 32px; }
+.dl-small { text-decoration: none; font-size: 15px; font-weight: 600; color: #fff; background: var(--accent); padding: 9px 16px; border-radius: 999px; }
+
+/* hero */
+.hero { padding: 64px 0 56px; display: grid; grid-template-columns: 1.2fr .8fr; gap: 40px; align-items: center; }
+h1 { font-size: clamp(44px, 7vw, 84px); line-height: 1.02; }
+h1 em { color: var(--accent); }
+.lead { font-size: clamp(17px, 2.1vw, 20px); color: var(--text-2); max-width: 32em; margin: 24px 0 0; }
+.cta { display: inline-flex; align-items: center; gap: 12px; margin-top: 32px; height: 56px; padding: 0 28px; border-radius: 999px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 35%, transparent); transition: transform .15s; }
+.cta:hover { transform: translateY(-2px); }
+.cta span { font-weight: 400; opacity: .8; font-size: 14px; }
+.small { margin-top: 14px; font-size: 14px; color: var(--muted); }
+.hero-art { display: grid; place-items: center; gap: 22px; }
+.mini-team { display: flex; gap: 14px; }
+.mini-team .ball { width: 44px; height: 44px; }
+
+section { padding: 56px 0; }
+h2 { font-size: clamp(32px, 4.6vw, 48px); line-height: 1.1; }
+.sub { color: var(--muted); margin: 10px 0 28px; }
+
+/* team */
+.team { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.helper { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 24px; box-shadow: var(--shadow); }
+.helper .ball { width: 54px; height: 54px; }
+.helper h3 { font-size: 26px; margin: 14px 0 6px; }
+.helper p { margin: 0 0 14px; color: var(--text-2); }
+.ask { display: block; font-size: 14.5px; color: var(--text-2); background: var(--surface-2); border-radius: 14px; padding: 9px 13px; margin-top: 8px; }
+.ask::before { content: '“'; color: var(--accent); } .ask::after { content: '”'; color: var(--accent); }
+
+/* watch it work */
+.demo { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+.panel { background: var(--bg); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); overflow: hidden; max-width: 420px; justify-self: center; width: 100%; }
+.panel .ph { display: flex; align-items: center; gap: 11px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.panel .ph .ball { width: 36px; height: 36px; }
+.panel .ph b { font: 400 20px var(--serif); display: block; line-height: 1.1; }
+.panel .ph small { color: var(--muted); font-size: 12.5px; }
+.panel .pb { padding: 14px; display: flex; flex-direction: column; gap: 9px; font-size: 14px; }
+.me { align-self: flex-end; background: var(--accent); color: #fff; padding: 9px 13px; border-radius: 16px 16px 5px 16px; max-width: 85%; }
+.job { display: flex; gap: 10px; padding: 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.job .ball { width: 24px; height: 24px; }
+.job b { font-size: 13.5px; } .job b::after { content: ' ✓'; color: var(--sage); }
+.job div div { color: var(--muted); font-size: 12.5px; }
+.bot { align-self: flex-start; background: var(--surface-2); padding: 9px 13px; border-radius: 16px 16px 16px 5px; max-width: 88%; }
+.points { display: grid; gap: 14px; }
+.point { display: flex; gap: 14px; }
+.point .n { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-ink); font: 500 17px var(--serif); }
+.point b { display: block; font: 500 20px/1.3 var(--serif); }
+.point span { color: var(--muted); font-size: 15px; }
+
+/* brains */
+.brains { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.brain { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 20px; }
+.brain b { display: block; font: 500 21px/1.25 var(--serif); }
+.brain .tag { display: inline-block; margin: 8px 0 10px; font-size: 13px; font-weight: 600; color: var(--accent-ink); background: var(--accent-soft); padding: 3px 10px; border-radius: 999px; }
+.brain p { margin: 0; color: var(--muted); font-size: 15px; }
+
+/* install */
+.steps { counter-reset: s; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.step { background: var(--surface-2); border-radius: 20px; padding: 20px; }
+.step::before { counter-increment: s; content: counter(s); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; font: 500 17px var(--serif); margin-bottom: 10px; }
+.step p { margin: 0; color: var(--text-2); font-size: 15.5px; }
+code { font-size: 14px; background: var(--surface); padding: 2px 6px; border-radius: 6px; word-break: break-word; }
+
+/* family + footer */
+.family { display: flex; gap: 14px; flex-wrap: wrap; }
+.fam { display: flex; align-items: center; gap: 12px; text-decoration: none; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 12px 18px 12px 12px; }
+.fam img { width: 44px; height: 44px; border-radius: 11px; }
+.fam b { display: block; font: 500 18px var(--serif); } .fam span { color: var(--muted); font-size: 13.5px; }
+footer { margin-top: 40px; padding: 30px 0 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+footer a { color: var(--text-2); }
+footer .grow { flex: 1; }
+
+@media (max-width: 860px) {
+  .hero, .demo { grid-template-columns: minmax(0, 1fr); }
+  .hero-art { order: -1; }
+  .team, .steps { grid-template-columns: minmax(0, 1fr); }
+  .brains { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) { .wrap { padding: 0 16px; } .brains { grid-template-columns: minmax(0, 1fr); } .ball.big { width: 130px; height: 130px; } }
+@media (prefers-reduced-motion: reduce) { .ball.big, .ball.big i { animation: none; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="img/icon.png" alt="">The Stupid Buddy</a>
+    <a class="dl-small" data-dl href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Download</a>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <div>
+      <h1>Your desktop got a buddy.<br><em>And Buddy got a team.</em></h1>
+      <p class="lead">Buddy from The Stupid Browser now lives on your Mac. Tell it what you need and its helpers get to work: tidying files, writing for you and looking things up. It always asks before it moves or deletes anything.</p>
+      <a class="cta" data-dl href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Download for Mac <span id="dlSize">.zip</span></a>
+      <div class="small" id="dlNote">Free · macOS 14 or newer · Apple chip and Intel</div>
+    </div>
+    <div class="hero-art" aria-hidden="true">
+      <span class="ball big"><i></i><i></i></span>
+      <div class="mini-team"><span class="ball" style="--c: var(--sage)"><i></i><i></i></span><span class="ball" style="--c: var(--plum)"><i></i><i></i></span><span class="ball" style="--c: var(--sky)"><i></i><i></i></span></div>
+    </div>
+  </div>
+
+  <section id="team">
+    <div class="wrap">
+      <h2>Meet the team</h2>
+      <p class="sub">Buddy listens, then hands each job to the right helper.</p>
+      <div class="team">
+        <div class="helper"><span class="ball" style="--c: var(--sage)"><i></i><i></i></span><h3>File Buddy</h3><p>Finds, reads, sorts, renames and tidies your files and folders.</p>
+          <span class="ask">Tidy my Downloads folder</span><span class="ask">Find the PDF from my landlord</span></div>
+        <div class="helper"><span class="ball" style="--c: var(--plum)"><i></i><i></i></span><h3>Writer Buddy</h3><p>Writes emails, notes, summaries and whole documents, in your language.</p>
+          <span class="ask">Write a thank-you email to my teacher</span><span class="ask">Summarize this report</span></div>
+        <div class="helper"><span class="ball" style="--c: var(--sky)"><i></i><i></i></span><h3>Web Buddy</h3><p>Looks things up, compares options and brings back facts with sources.</p>
+          <span class="ask">Best free note apps for Mac?</span><span class="ask">Compare these two laptops</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap demo">
+      <div class="panel" aria-hidden="true">
+        <div class="ph"><span class="ball"><i></i><i></i></span><div><b>Buddy</b><small>Ready · on this Mac</small></div></div>
+        <div class="pb">
+          <div class="me">What did we agree in the meeting notes?</div>
+          <div class="job"><span class="ball" style="--c: var(--sage)"><i></i><i></i></span><div><b>File Buddy</b><div>· Looking in ~/Documents</div><div>· Reading meeting-notes.md</div></div></div>
+          <div class="bot">You agreed to launch the website on Friday, and Emil writes the copy.</div>
+        </div>
+      </div>
+      <div>
+        <h2>It always asks first</h2>
+        <p class="sub">A helpful buddy, not a loose cannon.</p>
+        <div class="points">
+          <div class="point"><span class="n">1</span><div><b>You say yes</b><span>Moving, renaming, replacing or deleting? A Mac alert asks you, and only you can answer it.</span></div></div>
+          <div class="point"><span class="n">2</span><div><b>Only your chosen folders</b><span>Desktop, Documents and Downloads to start. You decide if it gets more.</span></div></div>
+          <div class="point"><span class="n">3</span><div><b>Trash, never gone</b><span>Deleted things go to the Trash, so you can always get them back.</span></div></div>
+          <div class="point"><span class="n">4</span><div><b>Watch it work</b><span>Every step shows up as it happens, and one tap stops it.</span></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="brain">
+    <div class="wrap">
+      <h2>Pick its brain</h2>
+      <p class="sub">Buddy runs on a free AI. You choose where.</p>
+      <div class="brains">
+        <div class="brain"><b>On your Mac</b><span class="tag">Free · private</span><p>With Ollama. Nothing leaves your computer. Slower: about 15–40 seconds a task.</p></div>
+        <div class="brain"><b>Groq</b><span class="tag">Free key · fastest</span><p>Answers in seconds. Your requests go to Groq.</p></div>
+        <div class="brain"><b>Google Gemini</b><span class="tag">Free key</span><p>A generous free amount every day. Your requests go to Google.</p></div>
+        <div class="brain"><b>OpenRouter</b><span class="tag">Free models</span><p>Pick any model marked free. Your requests go to OpenRouter.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Get Buddy going</h2>
+      <p class="sub">About two minutes.</p>
+      <div class="steps">
+        <div class="step"><p><b>Download</b> the app, unzip it and drag The Stupid Buddy into Applications. The first time, right-click it → Open → Open.</p></div>
+        <div class="step"><p><b>Choose a brain.</b> Free online: get a key at Groq or Google and paste it in Buddy’s Settings. Or on your Mac: install <a href="https://ollama.com">Ollama</a> and run <code>ollama pull qwen3-vl:8b-instruct</code>.</p></div>
+        <div class="step"><p><b>Click the ball</b> in the corner of your screen and tell Buddy what you need.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>The family</h2>
+      <p class="sub">Buddy has two siblings. Same look, same Buddy.</p>
+      <div class="family">
+        <a class="fam" href="https://stupid-browser.vercel.app"><img src="img/browser.png" alt=""><div><b>The Stupid Browser</b><span>A calm browser with Buddy built in</span></div></a>
+        <a class="fam" href="https://stupidmail.vercel.app"><img src="img/mail.png" alt=""><div><b>The Stupid Mail</b><span>A cosy mail app with a Quiet Inbox</span></div></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Part of <a href="https://thestupidcompany.net">The Stupid Company</a></span>
+    <a href="https://github.com/lattewirell-creator/stupid-buddy">Source code</a>
+    <a href="https://github.com/lattewirell-creator/stupid-buddy/issues">Report a problem</a>
+    <a href="mailto:lattewirell@thestupidcompany.net">Contact: lattewirell@thestupidcompany.net</a>
+    <span class="grow"></span>
+    <span id="ver">Free and open source</span>
+  </div>
+</footer>
+
+<script>
+// The download button points straight at the newest release's zip.
+fetch('https://api.github.com/repos/lattewirell-creator/stupid-buddy/releases/latest').then((r) => (r.ok ? r.json() : null)).then((rel) => {
+  if (!rel) return;
+  const zip = (rel.assets || []).find((a) => /\.zip$/.test(a.name));
+  if (zip) {
+    document.querySelectorAll('[data-dl]').forEach((a) => { a.href = zip.browser_download_url; });
+    document.getElementById('dlSize').textContent = zip.size ? Math.max(1, Math.round(zip.size / 1048576 * 10) / 10) + ' MB' : '.zip';
+  }
+  const v = String(rel.tag_name || '').replace(/^v/, '');
+  if (v) document.getElementById('ver').textContent = 'Version ' + v + ' · Free and open source';
+}).catch(() => {});
+</script>
+</body>
+</html>
