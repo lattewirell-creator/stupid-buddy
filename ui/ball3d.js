@@ -8,7 +8,7 @@ const Ball3D = (() => {
   const HATS_3D = { tophat: 'tophat', cap: 'cap', crown: 'crown', headphones: 'headphones' };   // the rest stay emoji hats
   const views = new Map();   // element → its 3D Buddy
 
-  const on = () => !!window.Buddy3D && window.__platform !== 'android' && Look.get().three !== false && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const on = () => !!window.Buddy3D && window.__platform !== 'android' && Look.get().three !== false && (window.__force3d || !matchMedia('(prefers-reduced-motion: reduce)').matches);   // __force3d: the Windows showcase test
 
   /** Called by Look.dress for every Buddy on the page. */
   function sync(el) {
