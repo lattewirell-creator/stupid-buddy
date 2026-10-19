@@ -40,13 +40,13 @@ const short = (p) => String(p || '').split('/').slice(-2).join('/');
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
 
 const HELPERS = {
-  files: { name: 'File Buddy', color: '#6F9161', job: 'finds, reads, sorts, renames and tidies files and folders',
+  files: { name: 'File Buddy', color: '#6F9161', mustLook: true, job: 'finds, reads, sorts, renames and tidies files and folders',
     tools: ['list_folder', 'search_files', 'read_file', 'make_folder', 'move_file', 'move_files', 'trash_file', 'open_file'],
     rules: 'Look before you act: list a folder before moving things in it. To tidy a folder, plan folders by kind (Images, Documents, Installers, Archives, Music, Videos, Other) and use move_files once. Never trash anything unless the task clearly asks.' },
   writer: { name: 'Writer Buddy', color: '#9A6390', job: 'writes and rewrites: emails, summaries, notes, lists and documents',
     tools: ['read_file', 'save_text_file', 'copy_to_clipboard'],
-    rules: 'Write clearly and warmly, in the user’s language. If asked for a document, save it as a .md file in ~/Documents unless told otherwise, then say where. Put the finished text in your final answer too.' },
-  web: { name: 'Web Buddy', color: '#5B87B5', job: 'looks things up on the web, compares options and gathers facts with sources',
+    rules: 'Write clearly and warmly, in the user’s language. Put the finished text itself in your final answer so the user can read it. Only save a file when the user asks for a file or document (then save it as .md in ~/Documents unless told otherwise, and say where). Don’t copy to the clipboard unless asked.' },
+  web: { name: 'Web Buddy', color: '#5B87B5', mustLook: true, job: 'looks things up on the web, compares options and gathers facts with sources',
     tools: ['web_search', 'read_web_page', 'open_in_browser'],
     rules: 'Search, then read the one to three best pages before answering. Give short facts with the source links. Never buy, sign in or fill in forms.' },
 };
@@ -66,20 +66,23 @@ async function runHelper(key, task, ui, { models, signal }) {
     { role: 'system', content: `You are ${h.name}, one of Buddy's helpers. Your job: you ${h.job}. ${h.rules}\n${await context()}\nWork in small steps with your tools. When the task is done, reply with a short, plain summary of what you did or found (no tool call).` },
     { role: 'user', content: task },
   ];
-  const tools = h.tools.map((t) => TOOLS[t].def);
+  // Writer Buddy only gets the save tool when the task is about a file (local AIs save everything otherwise).
+  const wantsFile = /\b(save|file|document|doc|docx|pdf|\.md|\.txt|folder|desktop|documents)\b/i.test(task);
+  const allowedTools = h.tools.filter((t) => !(key === 'writer' && t === 'save_text_file' && !wantsFile));
+  const tools = allowedTools.map((t) => TOOLS[t].def);
   for (let step = 0; step < 12; step++) {
     if (signal.aborted) throw new Error('stopped');
     const r = await AI.chat({ model: models[key], messages, tools, signal });
     if (!r.toolCalls.length) {
-      // Small local AIs like to answer from memory; the first time, send them to their tools instead.
-      if (step === 0) { messages.push({ role: 'assistant', content: r.content || '' }, { role: 'user', content: 'Don’t answer from memory. Do the task with your tools first (start now with a tool call), then summarize.' }); continue; }
+      // Small local AIs like to answer from memory; helpers that must look things up get sent to their tools once.
+      if (step === 0 && h.mustLook) { messages.push({ role: 'assistant', content: r.content || '' }, { role: 'user', content: 'Don’t answer from memory. Do the task with your tools first (start now with a tool call), then summarize.' }); continue; }
       return r.content.trim() || 'Done.';
     }
     messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })) });
     for (const c of r.toolCalls) {
       const tool = TOOLS[c.name];
       let result;
-      if (!tool || !h.tools.includes(c.name)) result = `Unknown tool ${c.name}.`;
+      if (!tool || !allowedTools.includes(c.name)) result = `Unknown tool ${c.name}.`;
       else {
         ui.step(tool.say(c.args || {}));
         try { result = await tool.run(c.args || {}); }
@@ -105,7 +108,7 @@ const Team = {
   async ask(text, ui, { models, name = 'Buddy', signal }) {
     const sys = `You are ${name}, a friendly helper who lives on the user's Mac desktop. You lead a small team:\n` +
       Object.values(HELPERS).map((h) => `- ${h.name}: ${h.job}`).join('\n') +
-      `\nFor chat and quick questions, just answer. For real work (files, writing documents, looking things up), give each part to the right helper with its ask_ tool, one or more times, then tell the user in a few friendly sentences what was done. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.\n${await context()}`;
+      `\nFor chat and quick questions, just answer. For real work, give it to the right helper with its ask_ tool. Give one helper the user's whole request about its area in ONE task, in the user's own words (never guess file names; the helper looks them up). Use several helpers only when the request really has different kinds of work (for example: find facts on the web, then write a document). Then tell the user in a few friendly sentences what was done, and include any text a helper wrote for them (like an email) in full. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.\n${await context()}`;
     const messages = [{ role: 'system', content: sys }, ...this.history.slice(-12), { role: 'user', content: text }];
     for (let round = 0; round < 6; round++) {
       if (signal.aborted) throw new Error('stopped');

@@ -28,6 +28,12 @@ final class Tools {
     let real = fm.fileExists(atPath: u.path) ? u.resolvingSymlinksInPath() : u.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(u.lastPathComponent)
     return roots.contains { real.path == $0.path || real.path.hasPrefix($0.path + "/") } ? real : nil
   }
+  /// A path inside the allowed folders that doesn't exist: say so, and list what's really there to help.
+  private func missing(_ u: URL, _ done: Done) {
+    let dir = u.deletingLastPathComponent()
+    let names = ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).filter { !$0.hasPrefix(".") }.prefix(40)
+    done(false, "There’s no “\(u.lastPathComponent)” in \(short(dir)).\(names.isEmpty ? "" : " What’s there: " + names.joined(separator: ", "))")
+  }
   private func outside(_ done: Done) { done(false, "That’s outside the folders I’m allowed to use (\(roots.map { ($0.path as NSString).abbreviatingWithTildeInPath }.joined(separator: ", "))). You can allow more folders in settings.") }
   private func ask(_ title: String, _ text: String, yes: String, _ go: @escaping () -> Void, _ done: @escaping Done) {
     DispatchQueue.main.async { [weak self] in
@@ -49,7 +55,7 @@ final class Tools {
       do { try fm.createDirectory(at: u, withIntermediateDirectories: true); done(true, "Made the folder \(short(u))") } catch { done(false, error.localizedDescription) }
     case "files.move":
       guard let from = allowed(m["from"]), let to0 = allowed(m["to"]) else { return outside(done) }
-      guard fm.fileExists(atPath: from.path) else { return done(false, "There’s no \(short(from)).") }
+      guard fm.fileExists(atPath: from.path) else { return missing(from, done) }
       var isDir: ObjCBool = false
       let to = fm.fileExists(atPath: to0.path, isDirectory: &isDir) && isDir.boolValue ? to0.appendingPathComponent(from.lastPathComponent) : to0
       if fm.fileExists(atPath: to.path) { return done(false, "\(short(to)) already exists; I won’t overwrite it.") }
@@ -59,7 +65,8 @@ final class Tools {
       }, done)
     case "files.moveMany": moveMany(m, done)
     case "files.trash":
-      guard let u = allowed(m["path"]), fm.fileExists(atPath: u.path) else { return outside(done) }
+      guard let u = allowed(m["path"]) else { return outside(done) }
+      guard fm.fileExists(atPath: u.path) else { return missing(u, done) }
       ask("Move “\(u.lastPathComponent)” to the Trash?", "You can get it back from the Trash.", yes: "Move to Trash", {
         do { try self.fm.trashItem(at: u, resultingItemURL: nil); done(true, "Moved to the Trash: \(u.lastPathComponent)") } catch { done(false, error.localizedDescription) }
       }, done)
@@ -72,6 +79,7 @@ final class Tools {
       DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([u]) }; done(true, true)
     case "files.open":
       guard let u = allowed(m["path"]) else { return outside(done) }
+      guard fm.fileExists(atPath: u.path) else { return missing(u, done) }
       DispatchQueue.main.async { NSWorkspace.shared.open(u) }; done(true, "Opened \(u.lastPathComponent)")
     case "web.search": work.async { self.webSearch(m, done) }
     case "web.fetch": work.async { self.webFetch(m, done) }
@@ -97,6 +105,7 @@ final class Tools {
   private func list(_ m: [String: Any], _ done: Done) {
     guard let u = allowed(m["path"]) else { return outside(done) }
     let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey]
+    guard fm.fileExists(atPath: u.path) else { return missing(u, done) }
     guard let items = try? fm.contentsOfDirectory(at: u, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return done(false, "I can’t open \(short(u)).") }
     let f = ISO8601DateFormatter(); f.formatOptions = [.withFullDate]
     let out: [[String: Any]] = items.prefix(400).map { i in
@@ -106,7 +115,8 @@ final class Tools {
     done(true, ["path": short(u), "count": items.count, "items": out])
   }
   private func read(_ m: [String: Any], _ done: Done) {
-    guard let u = allowed(m["path"]), fm.fileExists(atPath: u.path) else { return outside(done) }
+    guard let u = allowed(m["path"]) else { return outside(done) }
+    guard fm.fileExists(atPath: u.path) else { return missing(u, done) }
     let ext = u.pathExtension.lowercased()
     var text: String?
     if ext == "pdf" { text = PDFDocument(url: u)?.string }
