@@ -168,14 +168,31 @@ export function createBuddy(container, { interactive = true, onClick = null, zoo
   }
   // Ball face: two tall white eyes, like the welcome screen's Buddy (no mouth; happy eyes curve up).
   function ballFace(dim) {
-    const g = new THREE.Group(); g.position.set(0, dim.eyeY, 0);
-    const eyeGeo = new THREE.CapsuleGeometry(0.13, 0.2, 8, 20);   // proportions of the welcome screen's ball (11×17px eyes on 74px)
-    const at = (x) => { const z = Math.sqrt(Math.max(0, dim.front * dim.front - x * x - dim.eyeY * dim.eyeY)); return z; };
-    const eyes = [-0.28, 0.28].map((x) => { const e = new THREE.Mesh(eyeGeo, whiteMat); e.position.set(x, 0, at(x) - 0.05); e.scale.z = 0.55; e.rotation.y = x * 0.9; g.add(e); return e; });
-    const happyGeo = new THREE.TorusGeometry(0.13, 0.05, 8, 20, Math.PI);
-    const happy = [-0.28, 0.28].map((x) => { const e = new THREE.Mesh(happyGeo, whiteMat); e.position.set(x, -0.02, at(x) - 0.02); e.rotation.y = x * 0.9; e.visible = false; g.add(e); return e; });
-    const mouth = new THREE.Group(); mouth.position.set(0, -0.25, at(0)); g.add(mouth);   // keeps the talking animation happy
-    const photo = new THREE.Mesh(new THREE.CircleGeometry(0.42, 40), photoMat); photo.position.z = dim.front + 0.01; photo.visible = false; g.add(photo);
+    // Two tall eyes like the welcome screen's Buddy: clean pills lying on the ball (facing out along its surface, so
+    // the ball never cuts into them), pure white that the lighting can't grey out, shaded a touch cooler toward the
+    // bottom so they read as rounded, with a soft shadow just under each. Happy eyes are smooth arcs.
+    const g = new THREE.Group();
+    const R = dim.front, Y = dim.eyeY;
+    const eyeGeo = new THREE.CapsuleGeometry(0.112, 0.2, 12, 32);
+    const pos = eyeGeo.attributes.position, colors = [];
+    for (let i = 0; i < pos.count; i++) { const k = Math.min(1, Math.max(0, (0.21 - pos.getY(i)) / 0.42)); colors.push(1 - k * 0.07, 1 - k * 0.06, 1 - k * 0.02); }
+    eyeGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const eyeMat = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+    const shadeMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.17, depthWrite: false });
+    const onBall = (m, x, y, lift) => {   // on the surface at (x, y), facing out
+      const n = new THREE.Vector3(x, y, Math.sqrt(Math.max(0, R * R - x * x - y * y))).normalize();
+      m.position.copy(n.clone().multiplyScalar(R + lift)); m.lookAt(n.clone().multiplyScalar(R * 3)); return m;
+    };
+    const eyes = [-0.27, 0.27].map((x) => {
+      const e = onBall(new THREE.Mesh(eyeGeo, eyeMat), x, Y, 0.012); e.scale.z = 0.3;
+      const shade = new THREE.Mesh(eyeGeo, shadeMat); shade.position.set(0, -0.022, -0.03); shade.scale.set(1.14, 1.06, 0.6); e.add(shade);
+      g.add(e); return e;
+    });
+    const happyGeo = new THREE.TorusGeometry(0.11, 0.04, 12, 32, Math.PI);
+    const happyMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+    const happy = [-0.27, 0.27].map((x) => { const e = onBall(new THREE.Mesh(happyGeo, happyMat), x, Y - 0.03, 0.03); e.visible = false; g.add(e); return e; });
+    const mouth = new THREE.Group(); mouth.position.set(0, Y - 0.35, Math.sqrt(R * R - (Y - 0.35) ** 2)); g.add(mouth);   // keeps the talking animation happy
+    const photo = new THREE.Mesh(new THREE.CircleGeometry(0.42, 40), photoMat); photo.position.z = R + 0.01; photo.visible = false; g.add(photo);
     head.add(g);
     face = { group: g, eyes, happy, mouth, photo, eyeBase: eyes.map((e) => e.position.clone()) };
   }
