@@ -1,0 +1,133 @@
+/* The Stupid Buddy: the team. Buddy (the lead) talks with you and hands work to helpers, each with its own
+ * job, tools and colour. A helper works in small steps (look, read, move…) until its part is done, then Buddy
+ * puts the results together. Anything risky is confirmed by you in a Mac alert (see Tools.swift). */
+'use strict';
+
+/* ---------------- the Mac side ---------------- */
+const Native = (() => {
+  let seq = 0; const waiting = new Map(), listeners = new Map();
+  window.__native = {
+    reply(id, ok, value) { const w = waiting.get(id); if (!w) return; waiting.delete(id); ok ? w.resolve(value) : w.reject(new Error(typeof value === 'string' ? value : 'failed')); },
+    emit(name, value) { for (const fn of listeners.get(name) || []) fn(value); },
+  };
+  return {
+    call(op, params = {}) { return new Promise((resolve, reject) => { const id = ++seq; waiting.set(id, { resolve, reject }); window.webkit.messageHandlers.buddy.postMessage(Object.assign({ id, op }, params)); }); },
+    on(name, fn) { (listeners.get(name) || listeners.set(name, []).get(name)).push(fn); },
+  };
+})();
+
+/* ---------------- the helpers ---------------- */
+const fn = (name, description, props = {}, required = Object.keys(props)) => ({ type: 'function', function: { name, description, parameters: { type: 'object', properties: props, required } } });
+const str = (description) => ({ type: 'string', description });
+
+const TOOLS = {
+  list_folder: { def: fn('list_folder', 'List the files and folders inside a folder.', { path: str('Folder path, like ~/Downloads') }), run: (a) => Native.call('files.list', { path: a.path }), say: (a) => `Looking in ${a.path}` },
+  search_files: { def: fn('search_files', 'Find files whose name contains some words, in the allowed folders.', { name: str('Words in the file name') }), run: (a) => Native.call('files.search', { query: a.name }), say: (a) => `Searching for “${a.name}”` },
+  read_file: { def: fn('read_file', 'Read a text, PDF, Word, RTF or similar document.', { path: str('File path') }), run: (a) => Native.call('files.read', { path: a.path }), say: (a) => `Reading ${short(a.path)}` },
+  make_folder: { def: fn('make_folder', 'Create a folder (and any missing parent folders).', { path: str('Folder path') }), run: (a) => Native.call('files.mkdir', { path: a.path }), say: (a) => `Making folder ${short(a.path)}` },
+  move_file: { def: fn('move_file', 'Move or rename one file or folder. The user is asked first.', { from: str('Current path'), to: str('New path, or a folder to move it into') }), run: (a) => Native.call('files.move', { from: a.from, to: a.to }), say: (a) => `Moving ${short(a.from)}` },
+  move_files: { def: fn('move_files', 'Move many files at once (asks the user once). Use this to tidy folders.', { moves: { type: 'array', description: 'List of moves', items: { type: 'object', properties: { from: str('Current path'), to: str('Folder or new path') }, required: ['from', 'to'] } } }),
+    run: (a) => Native.call('files.moveMany', { moves: a.moves || [] }), say: (a) => `Moving ${(a.moves || []).length} files` },
+  trash_file: { def: fn('trash_file', 'Move a file to the Trash (the user is asked first).', { path: str('File path') }), run: (a) => Native.call('files.trash', { path: a.path }), say: (a) => `Trashing ${short(a.path)}` },
+  open_file: { def: fn('open_file', 'Open a file in its usual app so the user can see it.', { path: str('File path') }), run: (a) => Native.call('files.open', { path: a.path }), say: (a) => `Opening ${short(a.path)}` },
+  save_text_file: { def: fn('save_text_file', 'Save text as a file (asks before replacing a file). Use .md or .txt.', { path: str('File path, like ~/Documents/Notes.md'), text: str('The full text') }), run: (a) => Native.call('files.write', { path: a.path, text: a.text }), say: (a) => `Saving ${short(a.path)}` },
+  copy_to_clipboard: { def: fn('copy_to_clipboard', 'Copy text so the user can paste it anywhere.', { text: str('Text to copy') }), run: (a) => Native.call('clipboard.write', { text: a.text }), say: () => 'Copying to the clipboard' },
+  web_search: { def: fn('web_search', 'Search the web. Returns titles, links and snippets.', { query: str('What to search for') }), run: (a) => Native.call('web.search', { query: a.query }), say: (a) => `Searching the web for “${a.query}”` },
+  read_web_page: { def: fn('read_web_page', 'Read the text of a web page.', { url: str('Full https:// link') }), run: (a) => Native.call('web.fetch', { url: a.url }), say: (a) => `Reading ${host(a.url)}` },
+  open_in_browser: { def: fn('open_in_browser', 'Open a page in The Stupid Browser for the user.', { url: str('Full https:// link') }), run: (a) => Native.call('web.open', { url: a.url }), say: (a) => `Opening ${host(a.url)} in the browser` },
+};
+const short = (p) => String(p || '').split('/').slice(-2).join('/');
+const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+
+const HELPERS = {
+  files: { name: 'File Buddy', color: '#6F9161', job: 'finds, reads, sorts, renames and tidies files and folders',
+    tools: ['list_folder', 'search_files', 'read_file', 'make_folder', 'move_file', 'move_files', 'trash_file', 'open_file'],
+    rules: 'Look before you act: list a folder before moving things in it. To tidy a folder, plan folders by kind (Images, Documents, Installers, Archives, Music, Videos, Other) and use move_files once. Never trash anything unless the task clearly asks.' },
+  writer: { name: 'Writer Buddy', color: '#9A6390', job: 'writes and rewrites: emails, summaries, notes, lists and documents',
+    tools: ['read_file', 'save_text_file', 'copy_to_clipboard'],
+    rules: 'Write clearly and warmly, in the user’s language. If asked for a document, save it as a .md file in ~/Documents unless told otherwise, then say where. Put the finished text in your final answer too.' },
+  web: { name: 'Web Buddy', color: '#5B87B5', job: 'looks things up on the web, compares options and gathers facts with sources',
+    tools: ['web_search', 'read_web_page', 'open_in_browser'],
+    rules: 'Search, then read the one to three best pages before answering. Give short facts with the source links. Never buy, sign in or fill in forms.' },
+};
+
+/* ---------------- running a helper ---------------- */
+async function context() {
+  let roots = [];
+  try { roots = await Native.call('files.roots'); } catch {}
+  return `Today is ${new Date().toDateString()}. The user's home folder is ~. You may only use these folders: ${roots.join(', ') || '~/Desktop, ~/Documents, ~/Downloads'}.`;
+}
+const clip = (v) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > 7000 ? s.slice(0, 7000) + '…(cut)' : s; };
+
+/** One helper does one task, step by step. ui: { step(text, isError) }. Returns its final answer. */
+async function runHelper(key, task, ui, { models, signal }) {
+  const h = HELPERS[key];
+  const messages = [
+    { role: 'system', content: `You are ${h.name}, one of Buddy's helpers. Your job: you ${h.job}. ${h.rules}\n${await context()}\nWork in small steps with your tools. When the task is done, reply with a short, plain summary of what you did or found (no tool call).` },
+    { role: 'user', content: task },
+  ];
+  const tools = h.tools.map((t) => TOOLS[t].def);
+  for (let step = 0; step < 12; step++) {
+    if (signal.aborted) throw new Error('stopped');
+    const r = await AI.chat({ model: models[key], messages, tools, signal });
+    if (!r.toolCalls.length) {
+      // Small local AIs like to answer from memory; the first time, send them to their tools instead.
+      if (step === 0) { messages.push({ role: 'assistant', content: r.content || '' }, { role: 'user', content: 'Don’t answer from memory. Do the task with your tools first (start now with a tool call), then summarize.' }); continue; }
+      return r.content.trim() || 'Done.';
+    }
+    messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })) });
+    for (const c of r.toolCalls) {
+      const tool = TOOLS[c.name];
+      let result;
+      if (!tool || !h.tools.includes(c.name)) result = `Unknown tool ${c.name}.`;
+      else {
+        ui.step(tool.say(c.args || {}));
+        try { result = await tool.run(c.args || {}); }
+        catch (e) { result = 'Error: ' + e.message; ui.step(e.message, true); }
+      }
+      messages.push({ role: 'tool', tool_name: c.name, content: clip(result) });
+    }
+  }
+  return 'I ran out of steps before finishing. Here is what I managed so far.';
+}
+
+/* ---------------- Buddy, the lead ---------------- */
+const LEAD_TOOLS = Object.entries(HELPERS).map(([key, h]) =>
+  fn('ask_' + key, `Give a task to ${h.name}, who ${h.job}. Write the task so it makes sense on its own (include file names, folders, links, wording).`, { task: str('The task, complete and specific') }));
+
+const Team = {
+  history: [],   // the conversation with you (Buddy's answers, not the helpers' steps)
+  reset() { this.history = []; },
+  /**
+   * You ask; Buddy answers, handing parts to helpers when it helps.
+   * ui: { job(key, task) → { step(text, err), done(summary) }, typing(text) }. Returns Buddy's reply.
+   */
+  async ask(text, ui, { models, name = 'Buddy', signal }) {
+    const sys = `You are ${name}, a friendly helper who lives on the user's Mac desktop. You lead a small team:\n` +
+      Object.values(HELPERS).map((h) => `- ${h.name}: ${h.job}`).join('\n') +
+      `\nFor chat and quick questions, just answer. For real work (files, writing documents, looking things up), give each part to the right helper with its ask_ tool, one or more times, then tell the user in a few friendly sentences what was done. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.\n${await context()}`;
+    const messages = [{ role: 'system', content: sys }, ...this.history.slice(-12), { role: 'user', content: text }];
+    for (let round = 0; round < 6; round++) {
+      if (signal.aborted) throw new Error('stopped');
+      const r = await AI.chat({ model: models.lead, messages, tools: LEAD_TOOLS, signal });
+      if (!r.toolCalls.length) {
+        const answer = r.content.trim() || 'All done.';
+        this.history.push({ role: 'user', content: text }, { role: 'assistant', content: answer });
+        return answer;
+      }
+      messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })) });
+      for (const c of r.toolCalls) {
+        const key = String(c.name || '').replace(/^ask_/, '');
+        if (!HELPERS[key]) { messages.push({ role: 'tool', tool_name: c.name, content: 'No such helper.' }); continue; }
+        const task = String((c.args && c.args.task) || text);
+        const job = ui.job(key, task);
+        let result;
+        try { result = await runHelper(key, task, job, { models, signal }); }
+        catch (e) { if (e.message === 'stopped') throw e; result = 'The helper hit a problem: ' + e.message; }
+        job.done(result);
+        messages.push({ role: 'tool', tool_name: c.name, content: clip(result) });
+      }
+    }
+    return 'That took more rounds than I expected. Here’s where we got to above.';
+  },
+};
