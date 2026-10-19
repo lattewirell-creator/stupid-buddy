@@ -149,8 +149,8 @@ const Team = {
    * You ask; Buddy answers, handing parts to helpers when it helps.
    * ui: { job(key, task) → { step(text, err), done(summary) }, typing(text) }. Returns Buddy's reply.
    */
-  async ask(text, ui, { models, name = 'Buddy', signal }) {
-    const sys = `You are ${name}, a friendly helper who lives on the user's ${DEVICE === 'phone' ? 'phone' : DEVICE + ' desktop'}. You lead a small team:\n` +
+  async ask(text, ui, { models, name = 'Buddy', persona = '', signal }) {
+    const sys = `You are ${name}, a helper who lives on the user's ${DEVICE === 'phone' ? 'phone' : DEVICE + ' desktop'}. ${persona}\nYou lead a small team:\n` +
       Object.values(HELPERS).map((h) => `- ${h.name}: ${h.job}`).join('\n') +
       `\nFor chat and quick questions, just answer. For real work, give it to the right helper with its ask_ tool. Give one helper the user's whole request about its area in ONE task, in the user's own words (never guess file names; the helper looks them up). Use several helpers only when the request really has different kinds of work (for example: find facts on the web, then write a document). Then tell the user in a few friendly sentences what was done, and include any text a helper wrote for them (like an email) in full. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.\n${await context()}`;
     const messages = [{ role: 'system', content: sys }, ...this.history.slice(-12), { role: 'user', content: text }];

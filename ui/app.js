@@ -52,7 +52,7 @@ if (onPhone) {
   head.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     const r = head.getBoundingClientRect(), size = 72;
-    const b = ballEl(); b.classList.add('float-ball'); document.body.appendChild(b);
+    const b = ballEl(); b.classList.add('float-ball'); Look.dress(b); document.body.appendChild(b);
     let x = r.left + r.width / 2 - size / 2, y = r.top + r.height / 2 - size / 2, vx = 0, vy = 0, angle = 0, samples = [], held = true, raf = 0, last = 0;
     const place = () => { b.style.transform = `translate(${x}px, ${y}px) rotate(${angle}deg)`; };
     const floor = () => $('ask').getBoundingClientRect().top - size - 6;
@@ -84,6 +84,7 @@ if (onPhone) {
 
 /* ---------------- Buddy's face ---------------- */
 const faces = [$('ball'), $('headBall')];
+Look.apply();   // your Buddy's name, colour, eyes, mouth and hat (look.js)
 const face = (state) => faces.forEach((f) => { f.className = f.className.replace(/\b(blink|happy|sleepy|think|work)\b/g, '').trim(); if (state) f.classList.add(...state.split(' ')); });
 setInterval(() => { if (!busy && ready) { face('blink'); setTimeout(() => face(''), 140); } }, 4200);
 function status(t) { $('status').textContent = t; }
@@ -109,7 +110,9 @@ function note(text, action) { const n = el('div', 'note', text); if (action) { c
 
 function greet() {
   log.replaceChildren();
-  say('bot', `Hi! I’m **Buddy**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you\nTell me what you need. I’ll always ask before moving or deleting anything.`);
+  const L = Look.get();
+  say('bot', `Hi${L.call ? ' ' + L.call : ''}! I’m **${L.name}**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you` +
+    (HELPERS.hands ? '\n- **Hands Buddy** uses your other apps (it asks first, and Esc stops it)' : '') + `\nTell me what you need. I’ll always ask before moving or deleting anything.`);
   chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : `Find the best free note apps for ${window.__platform === 'windows' ? 'Windows' : 'Mac'}`, 'Write a short thank-you email']);
 }
 function chips(list) {
@@ -148,7 +151,7 @@ async function ask(text) {
   const area = workArea();
   const thinking = say('bot', ''); thinking.classList.add('typing');
   try {
-    const answer = await Team.ask(text, area, { models, signal: controller.signal });
+    const answer = await Team.ask(text, area, { models, name: Look.name(), persona: Look.persona(), signal: controller.signal });
     thinking.classList.remove('typing'); thinking.innerHTML = md(answer);
     face('happy'); setTimeout(() => face(''), 1600);
   } catch (e) {
@@ -201,6 +204,7 @@ $('keySave').addEventListener('click', async () => {
   showSettings(); refreshStatus();
 });
 async function showSettings() {
+  Look.render($('lookBox'));
   $('settings').classList.remove('hidden'); $('log').classList.add('hidden'); $('ask').classList.add('hidden'); $('chips').classList.add('hidden');
   renderProviders();
   const s = await AI.status();
@@ -265,7 +269,7 @@ window.__test = async (q, provider) => {
   window.__debugAI = (m) => log('   AI: ' + JSON.stringify({ calls: (m.tool_calls || []).map((c) => c.function && c.function.name + ' ' + JSON.stringify(c.function.arguments)), text: String(m.content || '').slice(0, 160) }));
   const t0 = Date.now();
   const area = { job(key, task) { log(`→ ${HELPERS[key].name}: ${task}`); return { step: (s, err) => log(`   ${err ? '⚠︎' : '·'} ${s}`), done: () => log(`   ✓ ${HELPERS[key].name} done`) }; } };
-  try { const a = await Team.ask(q, area, { models, signal: new AbortController().signal }); log('ANSWER (' + Math.round((Date.now() - t0) / 1000) + 's): ' + a.replace(/\n+/g, ' ⏎ ')); }
+  try { const a = await Team.ask(q, area, { models, name: Look.name(), persona: Look.persona(), signal: new AbortController().signal }); log('ANSWER (' + Math.round((Date.now() - t0) / 1000) + 's): ' + a.replace(/\n+/g, ' ⏎ ')); }
   catch (e) { log('ERROR: ' + e.message); }
   Native.call('quit');
 };
