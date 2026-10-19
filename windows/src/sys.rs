@@ -49,6 +49,15 @@ pub fn hide_from_capture(hwnd: isize, hide: bool) {
 #[cfg(not(windows))]
 pub fn hide_from_capture(_hwnd: isize, _hide: bool) {}
 
+/// Moves and resizes a window in one step (no in-between frame where it has the new size at the old place).
+#[cfg(windows)]
+pub fn set_frame(hwnd: isize, x: i32, y: i32, w: i32, h: i32) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER};
+    unsafe { SetWindowPos(hwnd as _, std::ptr::null_mut(), x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE) != 0 }
+}
+#[cfg(not(windows))]
+pub fn set_frame(_hwnd: isize, _x: i32, _y: i32, _w: i32, _h: i32) -> bool { false }
+
 /// Where the mouse pointer is on the screen (physical pixels).
 #[cfg(windows)]
 pub fn cursor() -> Option<(i32, i32)> {

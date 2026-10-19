@@ -12,8 +12,33 @@ if (onPhone) delete models.hands;
 if (onPhone) { document.body.classList.remove('closed'); for (const k of Object.keys(models)) if (/qwen|llama3|:8b/.test(models[k]) && !/70b|versatile/.test(models[k])) models[k] = AI.PROVIDERS[AI.provider()].model; }
 
 /* ---------------- open / close, and dragging the ball ---------------- */
-function open() { Ball3D.visible($('ball'), false); document.body.classList.remove('closed'); Native.call('window', { mode: 'open' }); setTimeout(() => $('input').focus(), 120); }
-function close() { if (onPhone) return; document.body.classList.add('closed'); Ball3D.visible($('ball'), true); Native.call('window', { mode: 'ball' }); }
+// Opening: the window takes its new size at once while the panel is still invisible, then the panel grows out of
+// the ball. Closing: the panel shrinks back into the ball, then the window becomes the ball again. (Animating the
+// window itself is choppy: the page has to lay itself out again in every frame.)
+const body = document.body, calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+let moving = false;
+async function open() {
+  if (moving || !body.classList.contains('closed')) return;
+  moving = true;
+  Ball3D.visible($('ball'), false);
+  body.classList.add('opening'); body.classList.remove('closed');   // the panel is there, but tiny and see-through
+  let at = null;
+  try { at = await Native.call('window', { mode: 'open' }); } catch {}
+  if (at && typeof at.x === 'number') { $('panel').style.setProperty('--ox', at.x + 'px'); $('panel').style.setProperty('--oy', at.y + 'px'); }
+  void $('panel').offsetWidth;   // lay out the tiny see-through panel first, so removing 'opening' animates from it
+  body.classList.remove('opening'); moving = false;
+  setTimeout(() => $('input').focus(), 180);
+}
+async function close() {
+  if (onPhone || moving || body.classList.contains('closed')) return;
+  moving = true;
+  body.classList.add('closing');
+  await new Promise((r) => setTimeout(r, calm() ? 0 : 210));
+  try { await Native.call('window', { mode: 'ball' }); } catch {}
+  body.classList.remove('closing'); body.classList.add('closed');
+  Ball3D.visible($('ball'), true);
+  moving = false;
+}
 {
   // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
   const ball = $('ball'); let start = null, moved = false, samples = [];

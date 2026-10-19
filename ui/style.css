@@ -64,8 +64,7 @@ body.busy #ballDot { display: block; animation: pulse 1s ease-in-out infinite; }
 
 /* ---------------- the panel ---------------- */
 #panel { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); border-radius: 22px; overflow: hidden; border: 1px solid var(--line);
-  box-shadow: 0 20px 50px rgba(40,30,20,.25); animation: open .25s var(--ease); }
-@keyframes open { from { transform: scale(.94); opacity: 0; } }
+  box-shadow: 0 20px 50px rgba(40,30,20,.25); }   /* opening and closing: see the end of this file */
 .head { display: flex; align-items: center; gap: 11px; padding: 14px 10px 12px 16px; border-bottom: 1px solid var(--line); -webkit-app-region: drag; }
 .head button { -webkit-app-region: no-drag; }
 .who { flex: 1; min-width: 0; }
@@ -172,3 +171,13 @@ html.android .chip { height: 34px; font-size: 14px; }
 .ball.b3d > canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; pointer-events: none; }
 #ball.b3d, #ball.b3d.has-hat { left: 0; top: 0; width: 92px; height: 92px; }
 .look-preview.b3d { width: 96px; height: 96px; margin: -12px; }
+
+/* Opening and closing (app.js): the panel grows out of the ball and shrinks back into it */
+#panel { transform-origin: var(--ox, calc(100% - 46px)) var(--oy, calc(100% - 46px)); transition: transform .26s cubic-bezier(.2, .9, .25, 1), opacity .18s ease; }
+body.opening #panel, body.closing #panel { transform: scale(.16); opacity: 0; }
+body.opening #panel { transition: none; }
+body.closing #panel { transition: transform .21s cubic-bezier(.5, 0, .75, .4), opacity .2s ease .03s; }
+body.closed #ball { animation: ballIn .24s cubic-bezier(.2, .9, .25, 1.25); }
+@keyframes ballIn { from { transform: scale(.55); opacity: .4; } }
+@media (prefers-reduced-motion: reduce) { #panel, body.closing #panel { transition: opacity .15s ease; } body.opening #panel, body.closing #panel { transform: none; } body.closed #ball { animation: none; } }
+html.android #panel { transition: none; transform: none; }
