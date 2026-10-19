@@ -1,0 +1,59 @@
+/* The Stupid Buddy in 3D (buddy3d.js, the same character as in The Stupid Browser and The Stupid Mail) on the
+ * desktop ball and in the Settings preview. Buddy looks at your cursor anywhere on the screen, and when you circle
+ * the cursor around Buddy it spins along. It only draws while something changes. Not on phones (battery), and
+ * Settings can switch it back to the flat ball. */
+'use strict';
+const Ball3D = (() => {
+  const HOSTS = '#ball, .look-preview';
+  const HATS_3D = { tophat: 'tophat', cap: 'cap', crown: 'crown', headphones: 'headphones' };   // the rest stay emoji hats
+  const views = new Map();   // element → its 3D Buddy
+
+  const on = () => !!window.Buddy3D && window.__platform !== 'android' && Look.get().three !== false && (window.__force3d || !matchMedia('(prefers-reduced-motion: reduce)').matches);   // __force3d: the Windows showcase test
+
+  /** Called by Look.dress for every Buddy on the page. */
+  function sync(el) {
+    for (const [e, b] of views) if (!e.isConnected) { b.destroy(); views.delete(e); }   // a Settings preview that was rebuilt
+    if (!el.matches || !el.matches(HOSTS)) return;
+    let b3 = views.get(el);
+    if (!on()) { if (b3) { b3.destroy(); views.delete(el); el.classList.remove('b3d', 'b3d-hat'); } return; }
+    if (!b3) {
+      b3 = window.Buddy3D.create(el, { interactive: false, zoom: 2.15, aimY: 0.1 });
+      if (!b3) return;
+      views.set(el, b3); el.classList.add('b3d');
+      b3.setVisible(true);
+    }
+    const L = Look.get();
+    const hat = HATS_3D[L.hat] || 'none';
+    b3.setLook({ shape: L.shape, color: Look.color(), hat, glasses: 'none' });
+    el.classList.toggle('b3d-hat', hat !== 'none');   // the 3D Buddy wears it; hide the emoji one
+  }
+  /** Buddy's mood from app.js (happy, think, work, sleepy…). */
+  function state(s) {
+    for (const b3 of views.values()) {
+      if (/happy/.test(s)) b3.setState({ happy: true });
+      b3.setState({ busy: /think|work/.test(s), sleepy: /sleepy/.test(s) });
+    }
+  }
+  function visible(el, yes) { const b3 = views.get(el); if (b3) b3.setVisible(yes); }
+  function land(impact) { const b3 = views.get(document.getElementById('ball')); if (b3) b3.land(Math.min(1, impact / 2500)); }
+
+  // The cursor, from the app (anywhere on the screen): dx, dy from Buddy's middle, in screen points (y down).
+  let lastAngle = null, lastT = 0;
+  function cursor(dx, dy) {
+    const b3 = views.get(document.getElementById('ball'));
+    if (!b3) return;
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
+    b3.lookAt(clamp(dx / 320), clamp(dy / 320));
+    // Circle the cursor around Buddy and it spins along (only close by, and only for steady circling).
+    const dist = Math.hypot(dx, dy), now = performance.now(), angle = Math.atan2(dy, dx);
+    if (dist > 40 && dist < 300 && lastAngle !== null && now - lastT < 200) {
+      let d = angle - lastAngle;
+      if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) < 0.8) b3.spinBy(d);
+    }
+    lastAngle = dist > 40 && dist < 300 ? angle : null; lastT = now;
+  }
+
+  addEventListener('DOMContentLoaded', () => { Look.apply(); });   // buddy3d.js (a module) has loaded by now
+  return { sync, state, visible, land, cursor, available: () => !!window.Buddy3D && window.__platform !== 'android' };
+})();

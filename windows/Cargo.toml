@@ -1,6 +1,6 @@
 [package]
 name = "stupid-buddy"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 
 [dependencies]
@@ -8,6 +8,7 @@ arboard = { version = "3.7.0", default-features = false }
 base64 = "0.23.1"
 dirs = "7"
 dunce = "1.0.5"
+ed25519-dalek = "3.0.0"
 image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
 include_dir = "0.7.4"
 pdf-extract = "0.12.1"
