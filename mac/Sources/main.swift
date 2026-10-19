@@ -140,7 +140,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     let id = msg["id"] as? Int ?? 0
     let done: (Bool, Any?) -> Void = { [weak self] ok, v in DispatchQueue.main.async { self?.reply(id, ok, v) } }
     switch op {
-    case "window": window(msg); done(true, true)
+    case "window": done(true, window(msg))
     case "drag": physics.stop(); drag(msg); done(true, true)
     case "release": physics.release(vx: msg["vx"] as? Double ?? 0, vy: msg["vy"] as? Double ?? 0); done(true, true)
     case "dragEnd": UserDefaults.standard.set(NSStringFromPoint(panel.frame.origin), forKey: "ballOrigin"); done(true, true)
@@ -155,7 +155,9 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   }
 
   /// "ball" (just Buddy) or "open" (the team panel), growing from the ball's corner of the screen.
-  private func window(_ m: [String: Any]) {
+  /// The size changes at once (the page animates the panel itself, which is smoother than resizing the window
+  /// frame by frame). Returns where Buddy's ball is inside the new window, in page coordinates.
+  @discardableResult private func window(_ m: [String: Any]) -> [String: Double] {
     let open = (m["mode"] as? String) == "open"
     if open { physics.stop() }
     let size = open ? App.openSize : App.ballSize
@@ -168,8 +170,10 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     f.origin.y = top ? anchorY - size.height : anchorY
     f.origin.x = min(max(f.origin.x, screen.minX + 8), screen.maxX - size.width - 8)
     f.origin.y = min(max(f.origin.y, screen.minY + 8), screen.maxY - size.height - 8)
-    panel.setFrame(f, display: true, animate: true)
+    let ball = NSPoint(x: panel.frame.midX, y: panel.frame.midY)
+    panel.setFrame(f, display: true, animate: false)
     if open { NSApp.activate(ignoringOtherApps: true); panel.makeKey() }
+    return ["x": Double(ball.x - f.minX), "y": Double(f.maxY - ball.y)]
   }
   private func drag(_ m: [String: Any]) {
     let dx = m["dx"] as? Double ?? 0, dy = m["dy"] as? Double ?? 0

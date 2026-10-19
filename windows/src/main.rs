@@ -74,8 +74,9 @@ impl App {
     fn pos(&self) -> (i32, i32) { self.window.outer_position().map(|p| (p.x, p.y)).unwrap_or((0, 0)) }
     fn size(&self) -> (i32, i32) { let s = self.window.outer_size(); (s.width as i32, s.height as i32) }
 
-    /// "ball" (just Buddy) or "open" (the team panel), growing from the ball's corner of the screen.
-    fn mode(&mut self, open: bool) {
+    /// "ball" (just Buddy) or "open" (the team panel), growing from the ball's corner of the screen. The size changes at
+    /// once (the page animates the panel); returns where Buddy's ball is inside the new window, in page coordinates.
+    fn mode(&mut self, open: bool) -> Value {
         if open { self.stop_flying(); }
         let scale = self.window.scale_factor();
         let (l, t, r, b) = sys::work_area(self.hwnd());
@@ -89,9 +90,12 @@ impl App {
         let m = (8.0 * scale) as i32;
         let nx = nx.clamp(l + m, (r - nw - m).max(l + m));
         let ny = ny.clamp(t + m, (b - nh - m).max(t + m));
-        self.window.set_inner_size(LogicalSize::new(lw, lh));
-        self.window.set_outer_position(PhysicalPosition::new(nx, ny));
+        if !sys::set_frame(self.hwnd(), nx, ny, nw, nh) {
+            self.window.set_inner_size(LogicalSize::new(lw, lh));
+            self.window.set_outer_position(PhysicalPosition::new(nx, ny));
+        }
         if open { self.window.set_focus(); }
+        json!({ "x": (x + w / 2 - nx) as f64 / scale, "y": (y + h / 2 - ny) as f64 / scale })
     }
     fn save_origin(&self) { let (x, y) = self.pos(); store::set("ballOrigin", json!([x, y])); }
     fn stop_flying(&mut self) { self.physics.stop(); self.ticking.store(false, Ordering::SeqCst); }
@@ -255,7 +259,7 @@ fn handle(app: &mut App, body: &str) {
     let op = m.get("op").and_then(Value::as_str).unwrap_or("").to_string();
     let f = |k: &str| m.get(k).and_then(Value::as_f64).unwrap_or(0.0);
     match op.as_str() {
-        "window" => { app.mode(m.get("mode").and_then(Value::as_str) == Some("open")); app.reply(id, Ok(json!(true))) }
+        "window" => { let at = app.mode(m.get("mode").and_then(Value::as_str) == Some("open")); app.reply(id, Ok(at)) }
         "drag" => {
             app.stop_flying();
             let scale = app.window.scale_factor();
