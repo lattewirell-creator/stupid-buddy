@@ -1,6 +1,7 @@
 // The Stupid Buddy for Windows: the same Buddy and team as the Mac app (ui/, built into this program) in Windows'
 // own web engine (WebView2), with the Mac app's native side ported to Rust: files and the web (tools.rs), the AI
-// connection (cloud.rs), throwing the ball (physics.rs), Hands Buddy (hands.rs), settings and keys (store.rs).
+// connection (cloud.rs), throwing the ball (physics.rs), Hands Buddy (hands.rs), settings and keys (store.rs),
+// updates (update.rs).
 // The page talks to it exactly as on the Mac: window.webkit.messageHandlers.buddy.postMessage({id, op, …}).
 #![cfg_attr(windows, windows_subsystem = "windows")]
 mod cloud;
@@ -9,6 +10,7 @@ mod physics;
 mod store;
 mod sys;
 mod tools;
+mod update;
 
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -64,6 +66,11 @@ impl App {
         std::thread::spawn(move || { let r = f(); let _ = p.send_event(Ev::Run(Box::new(move |app| app.reply(id, r)))); });
     }
     fn hwnd(&self) -> isize { sys::hwnd(&self.window) }
+    /// Runs the verified installer quietly (it starts Buddy again when it's done) and quits.
+    fn install(&mut self, path: std::path::PathBuf) {
+        if std::process::Command::new(&path).arg("/S").spawn().is_ok() { self.exit = true; }
+        else { log("The update installer couldn’t start."); }
+    }
     fn pos(&self) -> (i32, i32) { self.window.outer_position().map(|p| (p.x, p.y)).unwrap_or((0, 0)) }
     fn size(&self) -> (i32, i32) { let s = self.window.outer_size(); (s.width as i32, s.height as i32) }
 
@@ -178,6 +185,15 @@ fn main() {
     let mut app = App { proxy: proxy.clone(), window, view, physics: physics::Physics::new(), ticking: Arc::new(AtomicBool::new(false)),
         hands: hands::State::default(), banner: None, want_banner: false, exit: false };
     self_tests(&app);
+    // Updates: a first check shortly after start, then every 12 hours (update.rs skips it if it checked recently).
+    if cfg!(windows) && std::env::var("STUPID_BUDDY_SELFTEST").is_err() && std::env::var("STUPID_BUDDY_SHOWCASE").is_err() {
+        let p = proxy.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(30));
+            if let update::Outcome::Install(path) = update::check(false, update::VERSION, false) { let _ = p.send_event(Ev::Run(Box::new(move |app| app.install(path)))); }
+            std::thread::sleep(Duration::from_secs(12 * 3600));
+        });
+    }
 
     event_loop.run(move |event, target, flow| {
         *flow = ControlFlow::Wait;
@@ -235,6 +251,18 @@ fn handle(app: &mut App, body: &str) {
         }
         "quit" => { app.reply(id, Ok(json!(true))); app.exit = true }
         "log" => { log(m.get("text").and_then(Value::as_str).unwrap_or("")); app.reply(id, Ok(json!(true))) }
+        "update.check" => {
+            let p = app.proxy.clone();
+            std::thread::spawn(move || {
+                let outcome = update::check(true, update::VERSION, false);
+                let _ = p.send_event(Ev::Run(Box::new(move |app| match outcome {
+                    update::Outcome::Install(path) => { app.reply(id, Ok(json!("Installing the update…"))); app.install(path); }
+                    update::Outcome::Message(m) => app.reply(id, Ok(json!(m))),
+                    update::Outcome::Quiet => app.reply(id, Ok(json!(""))),
+                })));
+            });
+        }
+        "update.version" => app.reply(id, Ok(json!(update::VERSION))),
         "hands.permissions" | "hands.askPermissions" => app.reply(id, Ok(json!({ "screen": true, "control": true }))),
         "hands.start" => {
             let task = m.get("task").and_then(Value::as_str).unwrap_or("this task").to_string();
@@ -277,6 +305,14 @@ localStorage.setItem('look',JSON.stringify({shape:'eye',color:'mint',hat:'crown'
 hideSettings();close();await W(1200);await S('5-eye-ball');
 await Native.call('hands.start',{task:'showcase'});await W(800);await S('6-hands-bar');await Native.call('hands.stop');
 localStorage.removeItem('look');Look.apply();await L('DONE');Native.call('quit')})()"#.into());
+    } else if let Ok(from) = std::env::var("STUPID_BUDDY_UPDATE_DRYRUN") {
+        // Pretends to be an old version, finds the newest release, downloads it and checks its signature (no install).
+        let p = app.proxy.clone();
+        std::thread::spawn(move || {
+            let text = match update::check(true, &from, true) { update::Outcome::Message(m) => m, update::Outcome::Install(_) => "install".into(), update::Outcome::Quiet => "quiet".into() };
+            log(&format!("UPDATE {text}"));
+            let _ = p.send_event(Ev::Run(Box::new(|app| app.exit = true)));
+        });
     } else if let Ok(q) = std::env::var("STUPID_BUDDY_ASK") {
         let provider = std::env::var("STUPID_BUDDY_PROVIDER").unwrap_or_default();
         later(format!("Native.call('window',{{mode:'open'}});document.body.classList.remove('closed');window.__test({}, {})", json!(q), json!(provider)));

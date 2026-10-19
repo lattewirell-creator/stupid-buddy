@@ -62,6 +62,19 @@ jobs:
           if (-not $p.HasExited) { Stop-Process -Id $p.Id }
           if (Test-Path $tlog) { Get-Content $tlog } else { Write-Host "The throw didn't log a landing" }
           Write-Host "Work area: $([System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea)"
+      - name: Update check (dry run)
+        shell: pwsh
+        run: |
+          # Pretends to be Buddy 0.0.1: finds the newest release, downloads its installer and checks the signature.
+          $log = "$env:RUNNER_TEMP\update.log"
+          $env:STUPID_BUDDY_SHOWCASE = $null; $env:STUPID_BUDDY_THROW = $null; $env:STUPID_BUDDY_UPDATE_DRYRUN = "0.0.1"; $env:STUPID_BUDDY_LOG = $log; $env:STUPID_BUDDY_DATA = "$env:RUNNER_TEMP\buddy-update"
+          $p = Start-Process -FilePath target\release\stupid-buddy.exe -PassThru
+          for ($i = 0; $i -lt 120 -and -not $p.HasExited; $i++) { Start-Sleep -Milliseconds 500 }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id }
+          $text = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
+          Write-Host $text
+          if ($text -match 'failed its signature check') { Write-Error "A released installer doesn't match its signature"; exit 1 }
+          # Releases before 0.8.0 have no signature yet; from then on this should say "verified".
       - uses: actions/upload-artifact@v4
         with:
           name: windows-screenshots

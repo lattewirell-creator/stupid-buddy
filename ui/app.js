@@ -235,6 +235,17 @@ async function showSettings() {
   for (const h of Object.values(HELPERS)) { const r = el('div', 'row'); r.appendChild(ballEl(h.color)); const g = el('div', 'grow'); g.append(el('div', null, h.name), el('small', null, 'Can: ' + h.job)); r.appendChild(g); team.appendChild(r); }
 }
 function renderRoots(list) { $('roots').textContent = list.join(' · '); }
+// Windows: Buddy updates itself (windows/src/update.rs); here you can also check by hand.
+if (window.__platform === 'windows') {
+  const btn = $('updateBtn'), note = $('updateNote');
+  btn.classList.remove('hidden');
+  Native.call('update.version').then((v) => { btn.textContent = `Check for updates (you have ${v})`; }).catch(() => {});
+  btn.addEventListener('click', async () => {
+    btn.disabled = true; note.classList.remove('hidden'); note.textContent = 'Checking…';
+    try { note.textContent = (await Native.call('update.check')) || 'You have the newest Buddy.'; } catch (e) { note.textContent = e.message; }
+    btn.disabled = false;
+  });
+}
 $('addRoot').addEventListener('click', async () => renderRoots(await Native.call('files.addRoot').catch(() => [])));
 function hideSettings() { $('settings').classList.add('hidden'); $('log').classList.remove('hidden'); $('ask').classList.remove('hidden'); $('chips').classList.remove('hidden'); }
 $('setBtn').addEventListener('click', () => ($('settings').classList.contains('hidden') ? showSettings() : hideSettings()));

@@ -43,6 +43,9 @@ Section "Install"
   SetOutPath "$INSTDIR"
   File "/oname=The Stupid Buddy.exe" "target\release\stupid-buddy.exe"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+  ; An update from Buddy itself runs quietly (/S): start Buddy again afterwards.
+  IfSilent 0 +2
+    Exec '"$INSTDIR\The Stupid Buddy.exe"'
   CreateShortcut "$SMPROGRAMS\The Stupid Buddy.lnk" "$INSTDIR\The Stupid Buddy.exe"
   !define UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\TheStupidBuddy"
   WriteRegStr HKCU "${UNINST}" "DisplayName" "The Stupid Buddy"
