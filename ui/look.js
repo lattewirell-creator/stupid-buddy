@@ -15,7 +15,7 @@ const Look = (() => {
     direct: ['To the point', 'short and direct, with no small talk'],
     teacher: ['Teacher', 'a patient teacher who explains things simply'],
   };
-  const DEFAULTS = { name: 'Buddy', color: 'clay', shape: 'ball', eyes: 'dot', mouth: 'none', hat: 'none', mood: 'friendly', custom: '', call: '' };
+  const DEFAULTS = { name: 'Buddy', three: true, color: 'clay', shape: 'ball', eyes: 'dot', mouth: 'none', hat: 'none', mood: 'friendly', custom: '', call: '' };
 
   function get() {
     let saved = {};
@@ -47,6 +47,7 @@ const Look = (() => {
     if (L.hat === 'none') hat && hat.remove();
     else { if (!hat) { hat = document.createElement('u'); hat.className = 'hat'; b.appendChild(hat); } hat.textContent = HATS[L.hat][0]; }
     b.classList.toggle('has-hat', L.hat !== 'none');
+    if (typeof Ball3D !== 'undefined') Ball3D.sync(b);   // the 3D Buddy (ball3d.js), where it's on
   }
   /** Everywhere Buddy shows: the ball on the desktop, the one in the header, a thrown one, the preview. */
   function apply() {
@@ -104,7 +105,13 @@ const Look = (() => {
     const shapes = chips(SHAPES, L.shape, 'shape');
     shapes.addEventListener('click', () => setTimeout(() => render(box)));   // the Eye has no eyes or mouth to pick
     row('Shape', shapes);
-    if (L.shape !== 'eye') {
+    const three = typeof Ball3D !== 'undefined' && Ball3D.available();
+    if (three) {
+      const t = chips({ on: ['🧊', '3D'], off: ['⚪', 'Flat'] }, L.three === false ? 'off' : 'on', 'three');
+      t.querySelectorAll('.look-chip').forEach((c) => c.addEventListener('click', () => { save({ three: c.title === '3D' }); setTimeout(() => render(box)); }));
+      row('Style', t);
+    }
+    if (L.shape !== 'eye' && !(three && L.three !== false)) {   // the 3D Buddy has its own face
       row('Eyes', chips(EYES, L.eyes, 'eyes'));
       row('Mouth', chips(MOUTHS, L.mouth, 'mouth'));
     }

@@ -165,3 +165,10 @@ html.android .chip { height: 34px; font-size: 14px; }
 .look-swatch.any::-webkit-color-swatch-wrapper { padding: 0; } .look-swatch.any::-webkit-color-swatch { border: 0; opacity: 0; }
 #settings .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .look-custom { width: 100%; box-sizing: border-box; margin-top: 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 8px 10px; outline: 0; resize: none; font-size: 13px; }
+
+/* The 3D Buddy (ball3d.js): the canvas takes the place of the flat ball */
+.ball.b3d, .ball.b3d.shape-eye { background: none !important; box-shadow: none !important; filter: none !important; }
+.ball.b3d > i, .ball.b3d > .mouth, .ball.b3d.b3d-hat > .hat { display: none !important; }
+.ball.b3d > canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; pointer-events: none; }
+#ball.b3d, #ball.b3d.has-hat { left: 0; top: 0; width: 92px; height: 92px; }
+.look-preview.b3d { width: 96px; height: 96px; margin: -12px; }

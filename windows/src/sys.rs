@@ -49,6 +49,15 @@ pub fn hide_from_capture(hwnd: isize, hide: bool) {
 #[cfg(not(windows))]
 pub fn hide_from_capture(_hwnd: isize, _hide: bool) {}
 
+/// Where the mouse pointer is on the screen (physical pixels).
+#[cfg(windows)]
+pub fn cursor() -> Option<(i32, i32)> {
+    let mut p = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    (unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) } != 0).then_some((p.x, p.y))
+}
+#[cfg(not(windows))]
+pub fn cursor() -> Option<(i32, i32)> { None }
+
 #[cfg(windows)]
 pub fn hwnd(w: &tao::window::Window) -> isize { use tao::platform::windows::WindowExtWindows; w.hwnd() }
 #[cfg(not(windows))]

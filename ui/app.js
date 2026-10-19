@@ -12,8 +12,8 @@ if (onPhone) delete models.hands;
 if (onPhone) { document.body.classList.remove('closed'); for (const k of Object.keys(models)) if (/qwen|llama3|:8b/.test(models[k]) && !/70b|versatile/.test(models[k])) models[k] = AI.PROVIDERS[AI.provider()].model; }
 
 /* ---------------- open / close, and dragging the ball ---------------- */
-function open() { document.body.classList.remove('closed'); Native.call('window', { mode: 'open' }); setTimeout(() => $('input').focus(), 120); }
-function close() { if (onPhone) return; document.body.classList.add('closed'); Native.call('window', { mode: 'ball' }); }
+function open() { Ball3D.visible($('ball'), false); document.body.classList.remove('closed'); Native.call('window', { mode: 'open' }); setTimeout(() => $('input').focus(), 120); }
+function close() { if (onPhone) return; document.body.classList.add('closed'); Ball3D.visible($('ball'), true); Native.call('window', { mode: 'ball' }); }
 {
   // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
   const ball = $('ball'); let start = null, moved = false, samples = [];
@@ -38,8 +38,11 @@ function close() { if (onPhone) return; document.body.classList.add('closed'); N
   Native.on('roll', (r) => {
     angle += (r.vx / 60) / 36 * (180 / Math.PI);
     ball.style.rotate = angle.toFixed(1) + 'deg';
+    if (r.hit > 650) Ball3D.land(r.hit);
     if (r.hit > 650) { ball.classList.remove('squash'); void ball.offsetWidth; ball.classList.add('squash'); clearTimeout(squashT); squashT = setTimeout(() => ball.classList.remove('squash'), 260); face(r.hit > 1800 ? 'blink' : ''); }
   });
+  // The cursor anywhere on the screen (from the app): the 3D Buddy looks at it, and spins when you circle it.
+  Native.on('cursor', (c) => Ball3D.cursor(c.dx, c.dy));
   Native.on('landed', () => { face('happy'); setTimeout(() => face(''), 900); });
 }
 $('closeBtn').addEventListener('click', close);
@@ -85,7 +88,7 @@ if (onPhone) {
 /* ---------------- Buddy's face ---------------- */
 const faces = [$('ball'), $('headBall')];
 Look.apply();   // your Buddy's name, colour, eyes, mouth and hat (look.js)
-const face = (state) => faces.forEach((f) => { f.className = f.className.replace(/\b(blink|happy|sleepy|think|work)\b/g, '').trim(); if (state) f.classList.add(...state.split(' ')); });
+const face = (state) => { faces.forEach((f) => { f.className = f.className.replace(/\b(blink|happy|sleepy|think|work)\b/g, '').trim(); if (state) f.classList.add(...state.split(' ')); }); Ball3D.state(state || ''); };
 setInterval(() => { if (!busy && ready) { face('blink'); setTimeout(() => face(''), 140); } }, 4200);
 function status(t) { $('status').textContent = t; }
 

@@ -73,6 +73,20 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     panel.orderFrontRegardless()
     tools.app = self
     buildMenu()
+    startCursorFeed()
+  }
+
+  /// The 3D Buddy looks at the cursor anywhere on the screen (and spins when you circle it): while Buddy is the closed
+  /// ball, the cursor's position from Buddy's middle goes to the page whenever it moves (ui/ball3d.js).
+  private var lastCursor = NSPoint(x: -1, y: -1)
+  private func startCursorFeed() {
+    Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+      guard let self, let panel = self.panel, panel.frame.size == App.ballSize else { return }
+      let p = NSEvent.mouseLocation
+      if p == self.lastCursor { return }
+      self.lastCursor = p
+      self.emit("cursor", ["dx": Double(p.x - panel.frame.midX), "dy": Double(panel.frame.midY - p.y)])
+    }
   }
 
   private func buildMenu() {
@@ -98,6 +112,13 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
       let v = t.split(separator: ",").compactMap { Double($0) }
       print("[buddy] start \(Int(panel.frame.minX)),\(Int(panel.frame.minY)) screen \(Int(panel.screen?.visibleFrame.minY ?? 0))…\(Int(panel.screen?.visibleFrame.maxX ?? 0))")
       physics.release(vx: v.first ?? 0, vy: v.count > 1 ? v[1] : 0)
+      return
+    }
+    // Dev check: STUPID_BUDDY_EVAL="expression" prints what the page says after 3 s, then quits.
+    if let js = ProcessInfo.processInfo.environment["STUPID_BUDDY_EVAL"] {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+        self.web.evaluateJavaScript("String(\(js))") { r, e in print("[buddy] EVAL \(r ?? e?.localizedDescription ?? "nil")"); fflush(stdout); exit(0) }
+      }
       return
     }
     guard let q = ProcessInfo.processInfo.environment["STUPID_BUDDY_ASK"] else { return }

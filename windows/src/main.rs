@@ -194,6 +194,27 @@ fn main() {
             std::thread::sleep(Duration::from_secs(12 * 3600));
         });
     }
+    // The 3D Buddy looks at the cursor anywhere on the screen (and spins when you circle it): while Buddy is the
+    // closed ball, the cursor's position from Buddy's middle goes to the page whenever it moves (ui/ball3d.js).
+    {
+        let p = proxy.clone();
+        std::thread::spawn(move || {
+            let mut last = None;
+            loop {
+                std::thread::sleep(Duration::from_millis(33));
+                let now = sys::cursor();
+                if now.is_none() || now == last { continue; }
+                last = now;
+                let (cx, cy) = now.unwrap();
+                if p.send_event(Ev::Run(Box::new(move |app| {
+                    let scale = app.window.scale_factor();
+                    let ((x, y), (w, h)) = (app.pos(), app.size());
+                    if (w as f64 / scale - BALL.0).abs() > 1.0 { return; }   // only the closed ball
+                    app.emit("cursor", json!({ "dx": (cx - (x + w / 2)) as f64 / scale, "dy": (cy - (y + h / 2)) as f64 / scale }));
+                }))).is_err() { break; }
+            }
+        });
+    }
 
     event_loop.run(move |event, target, flow| {
         *flow = ControlFlow::Wait;
