@@ -1,0 +1,50 @@
+# Builds and tests The Stupid Buddy for Windows on GitHub's Windows machines, runs its self-test, and makes the installer.
+name: Windows
+on:
+  push:
+    paths: ["windows/**", "ui/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust
+        run: rustup update stable && rustup default stable
+      - name: Test
+        run: cargo test --release
+      - name: Build
+        run: cargo build --release
+      - name: Self-test
+        shell: pwsh
+        run: |
+          # The app tries its tools (files, web, keys, screenshots, Hands on/off, the window) and logs each result.
+          $log = "$env:RUNNER_TEMP\buddy.log"
+          $env:STUPID_BUDDY_SELFTEST = "1"; $env:STUPID_BUDDY_LOG = $log; $env:STUPID_BUDDY_DATA = "$env:RUNNER_TEMP\buddy-data"
+          $p = Start-Process -FilePath target\release\stupid-buddy.exe -PassThru
+          for ($i = 0; $i -lt 60 -and -not $p.HasExited; $i++) { Start-Sleep -Seconds 2 }
+          if (-not $p.HasExited) { Stop-Process -Id $p.Id; Write-Host "The app didn't quit by itself" }
+          if (-not (Test-Path $log)) { Write-Error "No self-test log"; exit 1 }
+          $text = Get-Content $log -Raw
+          Write-Host $text
+          $want = @('DEVICE PC', 'OK files.roots', 'OK files.write', 'OK files.read', 'FAIL files.list', 'OK web.search', 'OK hands.start', 'OK hands.stop', 'OK window', 'DONE')
+          $bad = $want | Where-Object { -not $text.Contains($_) }
+          if ($bad) { Write-Error "Missing: $($bad -join ', ')"; exit 1 }
+          if ($text -notmatch 'OK hands\.shot \{"height') { Write-Error "Hands Buddy couldn't take a screenshot"; exit 1 }
+      - name: Installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) { choco install nsis -y --no-progress; $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe" }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $nsis /V2 "/DVERSION=$version" installer.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist, target\release\stupid-buddy.exe | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: windows/dist/*.exe

@@ -1,18 +1,20 @@
 /* The Stupid Buddy: talking to the AI. Today that's Ollama on this Mac (free, nothing leaves the computer).
  * chat() sends a conversation (and the tools a helper may use) and returns the AI's next message. */
 'use strict';
+// What to call this computer in the interface: Mac, PC (Windows) or phone (Android).
+window.DEVICE = window.__platform === 'windows' ? 'PC' : window.__platform === 'android' ? 'phone' : 'Mac';
 const AI = (() => {
   const BASE = 'http://localhost:11434';
   const DEFAULT_MODEL = 'qwen3-vl:8b-instruct';
   let controller = null;
   /** Where the brain runs: 'ollama' (this Mac) or an online service with a free key. */
   const PROVIDERS = {
-    ollama: { name: 'This Mac (Ollama)', free: 'Free, private, nothing leaves your Mac' },
+    ollama: { name: `This ${DEVICE} (Ollama)`, free: `Free, private, nothing leaves your ${DEVICE}` },
     gemini: { name: 'Google Gemini', free: 'Free key, generous daily amount', keyUrl: 'https://aistudio.google.com/apikey', model: 'gemini-2.5-flash', vision: 'gemini-2.5-flash' },
     groq: { name: 'Groq', free: 'Free key, very fast', keyUrl: 'https://console.groq.com/keys', model: 'llama-3.3-70b-versatile', vision: 'meta-llama/llama-4-scout-17b-16e-instruct' },
     openrouter: { name: 'OpenRouter', free: 'Free key, pick a model marked “free”', keyUrl: 'https://openrouter.ai/keys', model: 'meta-llama/llama-3.3-70b-instruct:free' },
   };
-  const onPhone = window.__platform === 'android';
+  const onPhone = window.__platform === 'android', onWindows = window.__platform === 'windows';
   if (onPhone) delete PROVIDERS.ollama;   // no Ollama on a phone: an online AI with a free key
   const provider = () => { const p = localStorage.getItem('provider'); return PROVIDERS[p] ? p : onPhone ? 'groq' : 'ollama'; };
 
@@ -29,8 +31,7 @@ const AI = (() => {
       } catch { return { running: false, models: [], provider: p }; }
     }
     try {
-      const r = await fetch(BASE + '/api/tags', { signal: AbortSignal.timeout(3000) });
-      const d = await r.json();
+      const d = onWindows ? JSON.parse((await Native.call('ollama.request', { path: 'api/tags' })).body) : await (await fetch(BASE + '/api/tags', { signal: AbortSignal.timeout(3000) })).json();
       return { running: true, models: (d.models || []).map((m) => ({ name: m.name, size: m.size })), provider: 'ollama' };
     } catch { return { running: false, models: [] }; }
   }
@@ -50,6 +51,19 @@ const AI = (() => {
     const stream = !tools && !!onText;
     const body = { model: model || DEFAULT_MODEL, messages, stream, think: false, keep_alive: '10m', options: { temperature: 0.3, num_ctx: 16384, num_predict: tools ? 1200 : 1600 } };   // a step never rambles on for minutes
     if (tools) body.tools = tools;
+    if (onWindows) {
+      // Windows: the app sends it to Ollama (no streaming; the team never streams).
+      body.stream = false;
+      let r;
+      try { r = await Native.call('ollama.request', { path: 'api/chat', body: JSON.stringify(body) }); }
+      catch (e) { throw new Error(controller.signal.aborted ? 'stopped' : 'offline'); }
+      if (controller.signal.aborted) throw new Error('stopped');
+      if (r.status >= 400) throw new Error(/not found/i.test(r.body) ? 'nomodel' : 'AI error: ' + String(r.body).slice(0, 160));
+      const m = (JSON.parse(r.body).message) || {};
+      const text = m.content || '';
+      if (stream) onText(text);
+      return { content: text, toolCalls: (m.tool_calls || []).map((c, i) => ({ id: c.id || 'call_' + i, name: c.function && c.function.name, args: parseArgs(c.function && c.function.arguments) })) };
+    }
     let res;
     try { res = await fetch(BASE + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal }); }
     catch (e) { if (controller.signal.aborted) throw new Error('stopped'); throw new Error('offline'); }
@@ -80,7 +94,7 @@ const AI = (() => {
     } catch (e) { if (controller.signal.aborted) throw new Error('stopped'); throw e; }
     return { content: text, toolCalls: [] };
   }
-  /** The same step through an online service (OpenAI format), sent by the Mac side with your key. */
+  /** The same step through an online service (OpenAI format), sent by the app (not this page) with your key. */
   async function cloudChat({ model, messages, tools, signal }) {
     const p = provider();
     const toOpenAI = messages.map((m) => {

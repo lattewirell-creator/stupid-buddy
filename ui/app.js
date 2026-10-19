@@ -110,7 +110,7 @@ function note(text, action) { const n = el('div', 'note', text); if (action) { c
 function greet() {
   log.replaceChildren();
   say('bot', `Hi! I’m **Buddy**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you\nTell me what you need. I’ll always ask before moving or deleting anything.`);
-  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : 'Find the best free note apps for Mac', 'Write a short thank-you email']);
+  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : `Find the best free note apps for ${window.__platform === 'windows' ? 'Windows' : 'Mac'}`, 'Write a short thank-you email']);
 }
 function chips(list) {
   const box = $('chips'); box.replaceChildren();
@@ -137,7 +137,7 @@ function workArea() {
 }
 
 const ERRORS = { offline: 'I can’t reach my brain. Is Ollama running (or the internet on)? Then try again.', nomodel: 'That AI model isn’t available. Pick another in Settings.',
-  nokey: 'Add your free key in Settings first.', badkey: 'That key didn’t work. Check it in Settings.', ratelimit: 'The free daily amount is used up for now. Try again later, or switch to This Mac in Settings.' };
+  nokey: 'Add your free key in Settings first.', badkey: 'That key didn’t work. Check it in Settings.', ratelimit: 'The free daily amount is used up for now. Try again later, or switch to This ' + DEVICE + ' in Settings.' };
 async function ask(text) {
   text = String(text ?? $('input').value).trim();
   if (!text || busy) return;
@@ -206,8 +206,8 @@ async function showSettings() {
   const s = await AI.status();
   const pName = AI.PROVIDERS[AI.provider()].name;
   $('ollamaState').textContent = s.provider !== 'ollama'
-    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept in your Mac’s Keychain.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
-    : s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this Mac.` : 'Ollama is running, but no AI model is downloaded yet. In Terminal: ollama pull ' + AI.DEFAULT_MODEL)
+    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept ${DEVICE === 'Mac' ? 'in your Mac’s Keychain' : 'safely on this ' + DEVICE}.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
+    : s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this ${DEVICE}.` : 'Ollama is running, but no AI model is downloaded yet. In a terminal: ollama pull ' + AI.DEFAULT_MODEL)
     : 'Ollama isn’t running. Install it from ollama.com (free), open it, then come back.';
   const names = s.models.map((m) => m.name);
   // An online service's list changes over time: if a chosen model isn't offered any more, take a good one.
@@ -252,7 +252,7 @@ async function refreshStatus() {
   ready = s.running && s.models.some((m) => m.name === models.lead);
   if (!s.running) { status('Asleep: Ollama isn’t running'); face('sleepy'); }
   else if (!ready) { status('Waiting for my AI model…'); face('sleepy'); }
-  else { status(`Ready · ${models.lead} on this Mac`); if (!busy) face(''); }
+  else { status(`Ready · ${models.lead} on this ${DEVICE}`); if (!busy) face(''); }
 }
 greet();
 refreshStatus();

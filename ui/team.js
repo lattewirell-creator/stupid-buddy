@@ -1,9 +1,9 @@
 /* The Stupid Buddy: the team. Buddy (the lead) talks with you and hands work to helpers, each with its own
  * job, tools and colour. A helper works in small steps (look, read, move…) until its part is done, then Buddy
- * puts the results together. Anything risky is confirmed by you in a Mac alert (see Tools.swift). */
+ * puts the results together. Anything risky is confirmed by you in a system alert (Tools.swift on Mac, windows/src/tools.rs on Windows). */
 'use strict';
 
-/* ---------------- the Mac side ---------------- */
+/* ---------------- the app side (Mac, Windows or Android) ---------------- */
 const Native = (() => {
   let seq = 0; const waiting = new Map(), listeners = new Map();
   window.__native = {
@@ -47,7 +47,7 @@ const TOOLS = {
   type_text: { def: fn('type_text', 'Type text where the cursor is (click the field first).', { text: str('The text to type') }), run: (a) => Native.call('hands.type', { text: String(a.text || '') }), say: (a) => `Typing “${String(a.text || '').slice(0, 40)}”` },
   press_keys: { def: fn('press_keys', 'Press a key or shortcut, like return, tab, esc, cmd+c, cmd+v, cmd+a, cmd+w, down.', { keys: str('The key or shortcut') }), run: (a) => Native.call('hands.key', { keys: String(a.keys || '') }), say: (a) => `Pressing ${a.keys}` },
   scroll: { def: fn('scroll', 'Scroll at a spot. Negative amount scrolls down, positive scrolls up.', { x: num('0–1000'), y: num('0–1000'), amount: num('Lines, like -5 (down) or 5 (up)') }, ['x', 'y', 'amount']), run: (a) => handsAct('hands.scroll', a), say: (a) => (a.amount > 0 ? 'Scrolling up' : 'Scrolling down') },
-  open_app: { def: fn('open_app', 'Open (or switch to) an app by its name, like Notes, Safari, Calendar.', { name: str('The app name') }), run: (a) => Native.call('hands.openApp', { name: String(a.name || '') }), say: (a) => `Opening ${a.name}` },
+  open_app: { def: fn('open_app', 'Open (or switch to) an app by its name, like Notes, Safari, Calendar (Mac) or Notepad, Edge, Outlook (Windows).', { name: str('The app name') }), run: (a) => Native.call('hands.openApp', { name: String(a.name || '') }), say: (a) => `Opening ${a.name}` },
 };
 const short = (p) => String(p || '').split('/').slice(-2).join('/');
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
@@ -62,7 +62,7 @@ const HELPERS = {
   web: { name: 'Web Buddy', color: '#5B87B5', mustLook: true, job: 'looks things up on the web, compares options and gathers facts with sources',
     tools: ['web_search', 'read_web_page', 'open_in_browser'],
     rules: 'Search, then read the one to three best pages before answering. Give short facts with the source links. Never buy, sign in or fill in forms.' },
-  hands: { name: 'Hands Buddy', color: '#C8606F', job: 'uses other apps on the Mac by looking at the screen, clicking and typing (only for things the other helpers can’t do)',
+  hands: { name: 'Hands Buddy', color: '#C8606F', job: 'uses other apps on the computer by looking at the screen, clicking and typing (only for things the other helpers can’t do)',
     tools: ['look_at_screen', 'click', 'double_click', 'right_click', 'type_text', 'press_keys', 'scroll', 'open_app'],
     rules: 'You see a screenshot after each action. Spots are given as x and y on a 0–1000 grid over the screenshot (0,0 is the top-left corner, 1000,1000 the bottom-right). Do one or two actions at a time, then check the new screenshot. To start, open the app you need with open_app. Always say in “what” what you click. Never type passwords, card numbers or codes; if a password is needed, stop and ask the user to type it. Don’t send, buy, post or delete anything the user didn’t clearly ask for. If you are stuck after a few tries, stop and say what you saw.' },
 };
@@ -83,7 +83,7 @@ async function runHelper(key, task, ui, opts) {
   const p = await Native.call('hands.permissions').catch(() => ({}));
   if (!p.screen || !p.control) {
     Native.call('hands.askPermissions').catch(() => {});
-    return 'I need two permissions first. In System Settings → Privacy & Security, turn on The Stupid Buddy under both “Screen & System Audio Recording” and “Accessibility”, then quit and reopen Buddy and ask again.';
+    return 'I need two permissions first. In System Settings → Privacy & Security on your Mac, turn on The Stupid Buddy under both “Screen & System Audio Recording” and “Accessibility”, then quit and reopen Buddy and ask again.';
   }
   try { await Native.call('hands.start', { task }); }
   catch (e) { return e.message === 'permissions' ? 'I still need the Screen Recording and Accessibility permissions in System Settings.' : e.message; }
@@ -150,7 +150,7 @@ const Team = {
    * ui: { job(key, task) → { step(text, err), done(summary) }, typing(text) }. Returns Buddy's reply.
    */
   async ask(text, ui, { models, name = 'Buddy', signal }) {
-    const sys = `You are ${name}, a friendly helper who lives on the user's Mac desktop. You lead a small team:\n` +
+    const sys = `You are ${name}, a friendly helper who lives on the user's ${DEVICE === 'phone' ? 'phone' : DEVICE + ' desktop'}. You lead a small team:\n` +
       Object.values(HELPERS).map((h) => `- ${h.name}: ${h.job}`).join('\n') +
       `\nFor chat and quick questions, just answer. For real work, give it to the right helper with its ask_ tool. Give one helper the user's whole request about its area in ONE task, in the user's own words (never guess file names; the helper looks them up). Use several helpers only when the request really has different kinds of work (for example: find facts on the web, then write a document). Then tell the user in a few friendly sentences what was done, and include any text a helper wrote for them (like an email) in full. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.\n${await context()}`;
     const messages = [{ role: 'system', content: sys }, ...this.history.slice(-12), { role: 'user', content: text }];
