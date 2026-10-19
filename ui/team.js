@@ -78,7 +78,7 @@ async function runHelper(key, task, ui, { models, signal }) {
       if (step === 0 && h.mustLook) { messages.push({ role: 'assistant', content: r.content || '' }, { role: 'user', content: 'Don’t answer from memory. Do the task with your tools first (start now with a tool call), then summarize.' }); continue; }
       return r.content.trim() || 'Done.';
     }
-    messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })) });
+    messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ id: c.id, function: { name: c.name, arguments: c.args } })) });
     for (const c of r.toolCalls) {
       const tool = TOOLS[c.name];
       let result;
@@ -88,7 +88,7 @@ async function runHelper(key, task, ui, { models, signal }) {
         try { result = await tool.run(c.args || {}); }
         catch (e) { result = 'Error: ' + e.message; ui.step(e.message, true); }
       }
-      messages.push({ role: 'tool', tool_name: c.name, content: clip(result) });
+      messages.push({ role: 'tool', tool_call_id: c.id, tool_name: c.name, content: clip(result) });
     }
   }
   return 'I ran out of steps before finishing. Here is what I managed so far.';
@@ -118,17 +118,17 @@ const Team = {
         this.history.push({ role: 'user', content: text }, { role: 'assistant', content: answer });
         return answer;
       }
-      messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ function: { name: c.name, arguments: c.args } })) });
+      messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ id: c.id, function: { name: c.name, arguments: c.args } })) });
       for (const c of r.toolCalls) {
         const key = String(c.name || '').replace(/^ask_/, '');
-        if (!HELPERS[key]) { messages.push({ role: 'tool', tool_name: c.name, content: 'No such helper.' }); continue; }
+        if (!HELPERS[key]) { messages.push({ role: 'tool', tool_call_id: c.id, tool_name: c.name, content: 'No such helper.' }); continue; }
         const task = String((c.args && c.args.task) || text);
         const job = ui.job(key, task);
         let result;
         try { result = await runHelper(key, task, job, { models, signal }); }
         catch (e) { if (e.message === 'stopped') throw e; result = 'The helper hit a problem: ' + e.message; }
         job.done(result);
-        messages.push({ role: 'tool', tool_name: c.name, content: clip(result) });
+        messages.push({ role: 'tool', tool_call_id: c.id, tool_name: c.name, content: clip(result) });
       }
     }
     return 'That took more rounds than I expected. Here’s where we got to above.';

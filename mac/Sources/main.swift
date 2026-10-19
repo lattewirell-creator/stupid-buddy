@@ -87,7 +87,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   func webView(_ w: WKWebView, didFinish _: WKNavigation!) {
     guard let q = ProcessInfo.processInfo.environment["STUPID_BUDDY_ASK"] else { return }
     window(["mode": "open"])
-    web.evaluateJavaScript("window.__test(\(json(q)))", completionHandler: nil)
+    web.evaluateJavaScript("window.__test(\(json(q)), \(json(ProcessInfo.processInfo.environment["STUPID_BUDDY_PROVIDER"] ?? "")))", completionHandler: nil)
   }
 
   // MARK: bridge
@@ -112,6 +112,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     case "log": print("[buddy] \(msg["text"] as? String ?? "")"); fflush(stdout); done(true, true)
     default:
       if op.hasPrefix("hands.") { done(false, "Hands Buddy isn’t in this version yet.") }
+      else if op.hasPrefix("keys.") || op == "ai.request" { Cloud.handle(op, msg, done: done) }
       else { tools.handle(op, msg, done: done) }
     }
   }

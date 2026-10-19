@@ -80,7 +80,8 @@ function workArea() {
   };
 }
 
-const ERRORS = { offline: 'I can’t reach my brain (Ollama isn’t running). Open Ollama, then try again.', nomodel: 'My AI model isn’t downloaded yet. Check Settings.' };
+const ERRORS = { offline: 'I can’t reach my brain. Is Ollama running (or the internet on)? Then try again.', nomodel: 'That AI model isn’t available. Pick another in Settings.',
+  nokey: 'Add your free key in Settings first.', badkey: 'That key didn’t work. Check it in Settings.', ratelimit: 'The free daily amount is used up for now. Try again later, or switch to This Mac in Settings.' };
 async function ask(text) {
   text = String(text ?? $('input').value).trim();
   if (!text || busy) return;
@@ -97,7 +98,7 @@ async function ask(text) {
   } catch (e) {
     thinking.remove();
     if (e.message === 'stopped') note('Stopped.');
-    else note(ERRORS[e.message] || 'Something went wrong: ' + e.message, e.message === 'nomodel' || e.message === 'offline' ? { label: 'Settings', fn: showSettings } : null);
+    else note(ERRORS[e.message] || 'Something went wrong: ' + e.message, ['nomodel', 'offline', 'nokey', 'badkey', 'ratelimit'].includes(e.message) ? { label: 'Settings', fn: showSettings } : null);
     face('');
   } finally {
     busy = null; document.body.classList.remove('busy'); sendButton(false); refreshStatus();
@@ -117,12 +118,49 @@ $('ask').addEventListener('submit', (e) => { e.preventDefault(); if (busy) stop(
 $('newBtn').addEventListener('click', () => { if (busy) stop(); Team.reset(); greet(); });
 
 /* ---------------- settings ---------------- */
+function renderProviders() {
+  const box = $('providers'); box.replaceChildren();
+  const cur = AI.provider();
+  for (const [key, p] of Object.entries(AI.PROVIDERS)) {
+    const b = el('button', 'prov' + (key === cur ? ' on' : '')); b.appendChild(el('span', 'dot'));
+    const t = el('div'); t.append(el('div', null, p.name), el('small', null, p.free)); b.appendChild(t);
+    b.addEventListener('click', () => {
+      if (key === AI.provider()) return;
+      localStorage.setItem('provider', key);
+      const m = key === 'ollama' ? AI.DEFAULT_MODEL : p.model;
+      for (const k of Object.keys(models)) models[k] = m;
+      localStorage.setItem('models', JSON.stringify(models));
+      showSettings(); refreshStatus();
+    });
+    box.appendChild(b);
+  }
+  const p = AI.PROVIDERS[cur];
+  $('keyBox').classList.toggle('hidden', cur === 'ollama');
+  $('keyGet').onclick = () => p.keyUrl && Native.call('web.open', { url: p.keyUrl });
+}
+$('keySave').addEventListener('click', async () => {
+  const key = $('keyInput').value.trim(); $('keyInput').value = '';
+  try { await Native.call('keys.set', { provider: AI.provider(), key }); } catch (e) { $('ollamaState').textContent = e.message; return; }
+  showSettings(); refreshStatus();
+});
 async function showSettings() {
   $('settings').classList.remove('hidden'); $('log').classList.add('hidden'); $('ask').classList.add('hidden'); $('chips').classList.add('hidden');
+  renderProviders();
   const s = await AI.status();
-  $('ollamaState').textContent = s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this Mac.` : 'Ollama is running, but no AI model is downloaded yet. In Terminal: ollama pull ' + AI.DEFAULT_MODEL)
+  const pName = AI.PROVIDERS[AI.provider()].name;
+  $('ollamaState').textContent = s.provider !== 'ollama'
+    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept in your Mac’s Keychain.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
+    : s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this Mac.` : 'Ollama is running, but no AI model is downloaded yet. In Terminal: ollama pull ' + AI.DEFAULT_MODEL)
     : 'Ollama isn’t running. Install it from ollama.com (free), open it, then come back.';
   const names = s.models.map((m) => m.name);
+  // An online service's list changes over time: if a chosen model isn't offered any more, take a good one.
+  if (s.provider !== 'ollama' && s.running && names.length) {
+    const prefer = [/gpt-oss-120b/, /llama-3\.3-70b/, /70b/, /gemini-2\.5-flash$/, /flash/, /:free$/, /./];
+    const best = prefer.map((re) => names.find((n) => re.test(n) && !/whisper|tts|guard|embed|vision-preview/i.test(n))).find(Boolean) || names[0];
+    let changed = false;
+    for (const k of Object.keys(models)) if (!names.includes(models[k])) { models[k] = best; changed = true; }
+    if (changed) { localStorage.setItem('models', JSON.stringify(models)); refreshStatus(); }
+  }
   const box = $('models'); box.replaceChildren();
   for (const [key, label, color] of [['lead', 'Buddy (the lead)', null], ...Object.entries(HELPERS).map(([k, h]) => [k, h.name, h.color])]) {
     const row = el('div', 'row'); row.appendChild(ballEl(color));
@@ -146,6 +184,15 @@ $('quitBtn').addEventListener('click', () => Native.call('quit'));
 /* ---------------- start ---------------- */
 async function refreshStatus() {
   const s = await AI.status();
+  if (s.provider !== 'ollama') {
+    ready = s.running;
+    const n = AI.PROVIDERS[s.provider].name;
+    if (s.needsKey) { status(`Needs a free ${n} key (Settings)`); face('sleepy'); }
+    else if (s.badKey) { status(`${n} key didn’t work (Settings)`); face('sleepy'); }
+    else if (!s.running) { status(`Can’t reach ${n}`); face('sleepy'); }
+    else { status(`Ready · ${models.lead} on ${n}`); if (!busy) face(''); }
+    return;
+  }
   ready = s.running && s.models.some((m) => m.name === models.lead);
   if (!s.running) { status('Asleep: Ollama isn’t running'); face('sleepy'); }
   else if (!ready) { status('Waiting for my AI model…'); face('sleepy'); }
@@ -154,8 +201,11 @@ async function refreshStatus() {
 greet();
 refreshStatus();
 // Dev self-test (see main.swift): ask, print what the team does, quit.
-window.__test = async (q) => {
+window.__test = async (q, provider) => {
   const log = (t) => Native.call('log', { text: t });
+  // STUPID_BUDDY_PROVIDER=local: the online (OpenAI-format) path, through Ollama's own OpenAI-style door.
+  if (provider === 'local') { AI.PROVIDERS.local = { name: 'Local test', model: AI.DEFAULT_MODEL }; localStorage.setItem('provider', 'local'); }
+  else localStorage.setItem('provider', 'ollama');
   window.__debugAI = (m) => log('   AI: ' + JSON.stringify({ calls: (m.tool_calls || []).map((c) => c.function && c.function.name + ' ' + JSON.stringify(c.function.arguments)), text: String(m.content || '').slice(0, 160) }));
   const t0 = Date.now();
   const area = { job(key, task) { log(`→ ${HELPERS[key].name}: ${task}`); return { step: (s, err) => log(`   ${err ? '⚠︎' : '·'} ${s}`), done: () => log(`   ✓ ${HELPERS[key].name} done`) }; } };

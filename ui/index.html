@@ -25,8 +25,16 @@
     <section id="settings" class="hidden">
       <h2 class="serif">Settings</h2>
       <div class="group">
-        <div class="label">The AI (free, on this Mac)</div>
+        <div class="label">Where Buddy’s brain runs</div>
+        <div id="providers"></div>
+        <div id="keyBox" class="hidden">
+          <div class="keyrow"><input id="keyInput" type="password" placeholder="Paste your free key" spellcheck="false" autocomplete="off"><button id="keySave" class="chip">Save</button></div>
+          <button id="keyGet" class="link left">Get a free key →</button>
+        </div>
         <div id="ollamaState" class="note"></div>
+      </div>
+      <div class="group">
+        <div class="label">Which model each one uses</div>
         <div id="models"></div>
       </div>
       <div class="group">
