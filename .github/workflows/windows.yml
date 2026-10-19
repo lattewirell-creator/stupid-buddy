@@ -39,7 +39,8 @@ jobs:
         run: |
           $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
           $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
-          if (-not (Test-Path $nsis)) { choco install nsis -y --no-progress; $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe" }
+          # The installer maker comes from Chocolatey, which is sometimes briefly down: try a few times.
+          for ($i = 0; $i -lt 4 -and -not (Test-Path $nsis); $i++) { choco install nsis -y --no-progress; if (-not (Test-Path $nsis)) { Start-Sleep -Seconds 20 } }
           New-Item -ItemType Directory -Force dist | Out-Null
           & $nsis /V2 "/DVERSION=$version" installer.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
