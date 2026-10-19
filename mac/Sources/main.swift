@@ -41,6 +41,12 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   static let ballSize = NSSize(width: 92, height: 92)
   static let openSize = NSSize(width: 440, height: 660)
 
+  /// Clicking Buddy's Dock icon opens the panel.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    web.evaluateJavaScript("open()", completionHandler: nil)
+    return false
+  }
+
   func applicationDidFinishLaunching(_ n: Notification) {
     let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
     let saved = UserDefaults.standard.string(forKey: "ballOrigin").map(NSPointFromString)
@@ -175,5 +181,5 @@ func json(_ v: Any?) -> String {
 let app = NSApplication.shared
 let delegate = App()
 app.delegate = delegate
-app.setActivationPolicy(.accessory)   // no Dock icon: Buddy lives on the desktop
+app.setActivationPolicy(.regular)   // in the Dock like any app; clicking the icon opens Buddy
 app.run()

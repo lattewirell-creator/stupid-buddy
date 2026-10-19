@@ -140,7 +140,8 @@ fn main() {
     let proxy = event_loop.create_proxy();
     let mut wb = WindowBuilder::new().with_title("The Stupid Buddy").with_inner_size(LogicalSize::new(BALL.0, BALL.1))
         .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_visible(false);
-    #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_skip_taskbar(true).with_undecorated_shadow(false); }
+    // On the taskbar like any app (the red Hands bar below stays off it).
+    #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_undecorated_shadow(false); }
     let window = wb.build(&event_loop).expect("window");
 
     // Where the ball was left last time (if that's still on a screen), else the bottom-right corner.
