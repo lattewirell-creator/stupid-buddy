@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Builds mac/build/The Stupid Buddy.app (one app for Apple chip and Intel). Usage: bash mac/build.sh
+# Builds mac/build.noindex/The Stupid Buddy.app (one app for Apple chip and Intel; ".noindex" keeps Spotlight and
+# Launchpad from listing build copies as extra apps). Usage: bash mac/build.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 VERSION=$(cat ../VERSION 2>/dev/null || echo 0.1.0)
-APP="build/The Stupid Buddy.app"
+APP="build.noindex/The Stupid Buddy.app"
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 for arch in arm64 x86_64; do
-  xcrun swiftc -O -target "$arch-apple-macos14.0" -o "build/StupidBuddy-$arch" Sources/*.swift -framework Cocoa -framework WebKit -framework PDFKit
+  xcrun swiftc -O -target "$arch-apple-macos14.0" -o "build.noindex/StupidBuddy-$arch" Sources/*.swift -framework Cocoa -framework WebKit -framework PDFKit
 done
-lipo -create -output "$APP/Contents/MacOS/StupidBuddy" build/StupidBuddy-arm64 build/StupidBuddy-x86_64
-rm -f build/StupidBuddy-arm64 build/StupidBuddy-x86_64
+lipo -create -output "$APP/Contents/MacOS/StupidBuddy" build.noindex/StupidBuddy-arm64 build.noindex/StupidBuddy-x86_64
+rm -f build.noindex/StupidBuddy-arm64 build.noindex/StupidBuddy-x86_64
 cp -R ../ui "$APP/Contents/Resources/ui"
 [ -f icon.icns ] && cp icon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<EOF
