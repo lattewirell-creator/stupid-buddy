@@ -26,7 +26,7 @@ const Ball3D = (() => {
     const hat = HATS_3D[L.hat] || 'none';
     b3.setLook({ shape: L.shape, color: Look.color(), hat, glasses: 'none' });
     // Room for everything inside the window: a hat needs space above, and hard bumps squash Buddy wider.
-    if (hat !== 'none') b3.frame(1.62, 0.5); else b3.frame(2, 0.1);
+    if (hat !== 'none') b3.setFraming(1.62, 0.5); else b3.setFraming(2, 0.1);
     el.classList.toggle('b3d-hat', hat !== 'none');   // the 3D Buddy wears it; hide the emoji one
   }
   /** Buddy's mood from app.js (happy, think, work, sleepy…). */
