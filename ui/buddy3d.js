@@ -335,6 +335,8 @@ export function createBuddy(container, { interactive = true, onClick = null, zoo
   function land(impact) { squash = Math.min(1, impact); if (impact > 0.75) st.dizzyUntil = performance.now() + 1800; kick(); }
   let target = { x: 0, y: 0 }, lastPointer = 0, spin = 0, spinVel = 0, hop = 0, hopVel = 0, wave = 0, nextBlink = 1.5, blinkT = -1, glance = { x: 0, y: 0, until: 0 };
   function lookAt(nx, ny) { target = { x: Math.max(-1, Math.min(1, nx)), y: Math.max(-1, Math.min(1, ny)) }; lastPointer = performance.now(); kick(); }
+  /** Frame Buddy closer (zoom) and look at a height (aimY), e.g. leave room above for a hat. */
+  function setFraming(z, y) { camera.position.set(0, 0.5 / z, 8.4 / z); camera.lookAt(0, y, 0); kick(); }
   /** Turn by this many radians (it keeps some speed and eases back to facing you). */
   function spinBy(rad) { spinVel += rad * 14; kick(); }
   function poke() { hopVel = 3.2; wave = 1; st.happyUntil = performance.now() + 1400; kick(); }
@@ -449,7 +451,7 @@ export function createBuddy(container, { interactive = true, onClick = null, zoo
   // A still picture of the character as it looks right now (used for the little face in the chat header).
   function snapshot() { if (!canvas.width || !canvas.height) return ''; renderer.render(scene, camera); return canvas.toDataURL('image/png'); }
   resize(); setLook({}); kick();
-  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas, land, snapshot, spinBy };
+  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas, land, snapshot, spinBy, setFraming };
 }
 window.Buddy3D = { create: createBuddy };
 window.dispatchEvent(new Event('buddy3d-ready'));
