@@ -17,7 +17,7 @@ const Ball3D = (() => {
     let b3 = views.get(el);
     if (!on()) { if (b3) { b3.destroy(); views.delete(el); el.classList.remove('b3d', 'b3d-hat'); } return; }
     if (!b3) {
-      b3 = window.Buddy3D.create(el, { interactive: false, zoom: 2.15, aimY: 0.1 });
+      b3 = window.Buddy3D.create(el, { interactive: false, zoom: 2, aimY: 0.1 });
       if (!b3) return;
       views.set(el, b3); el.classList.add('b3d');
       b3.setVisible(true);
@@ -25,6 +25,8 @@ const Ball3D = (() => {
     const L = Look.get();
     const hat = HATS_3D[L.hat] || 'none';
     b3.setLook({ shape: L.shape, color: Look.color(), hat, glasses: 'none' });
+    // Room for everything inside the window: a hat needs space above, and hard bumps squash Buddy wider.
+    if (hat !== 'none') b3.frame(1.62, 0.5); else b3.frame(2, 0.1);
     el.classList.toggle('b3d-hat', hat !== 'none');   // the 3D Buddy wears it; hide the emoji one
   }
   /** Buddy's mood from app.js (happy, think, work, sleepy…). */
@@ -34,6 +36,10 @@ const Ball3D = (() => {
       b3.setState({ busy: /think|work/.test(s), sleepy: /sleepy/.test(s) });
     }
   }
+  /** Picked up (surprised eyes) or let go. */
+  function held(yes) { const b3 = views.get(document.getElementById('ball')); if (b3) b3.setState({ held: yes }); }
+  /** Thrown and rolling: turn along with the speed (the flat ball rotates as a picture instead). */
+  function roll(vx) { const b3 = views.get(document.getElementById('ball')); if (b3 && Math.abs(vx) > 30) b3.spinBy(vx / 60 / 36 * 0.35); }
   function visible(el, yes) { const b3 = views.get(el); if (b3) b3.setVisible(yes); }
   function land(impact) { const b3 = views.get(document.getElementById('ball')); if (b3) b3.land(Math.min(1, impact / 2500)); }
 
@@ -55,5 +61,5 @@ const Ball3D = (() => {
   }
 
   addEventListener('DOMContentLoaded', () => { Look.apply(); });   // buddy3d.js (a module) has loaded by now
-  return { sync, state, visible, land, cursor, available: () => !!window.Buddy3D && window.__platform !== 'android' };
+  return { sync, state, visible, land, cursor, held, roll, available: () => !!window.Buddy3D && window.__platform !== 'android' };
 })();

@@ -55,6 +55,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 #ball:hover { transform: scale(1.06); }
 #ball.held { cursor: grabbing; transform: scale(1.1); }
 #ball.squash { animation: squash .26s var(--ease); }
+/* The 3D Buddy fills its whole window, so it mustn't grow, squash or rotate as a picture (its edges would be cut off):
+   it reacts inside the picture instead (ball3d.js: surprised eyes when held, its own squash and spin). */
+#ball.b3d:hover, #ball.b3d.held { transform: none; }
+#ball.b3d.squash { animation: none; }
 @keyframes squash { 30% { transform: scale(1.18, .8); } 65% { transform: scale(.94, 1.06); } }
 body.closed #ball { display: block; }
 body.closed #panel { display: none; }

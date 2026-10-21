@@ -42,7 +42,7 @@ async function close() {
 {
   // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
   const ball = $('ball'); let start = null, moved = false, samples = [];
-  ball.addEventListener('pointerdown', (e) => { start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); });
+  ball.addEventListener('pointerdown', (e) => { start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); Ball3D.held(true); });
   ball.addEventListener('pointermove', (e) => {
     if (!start) return;
     const dx = e.screenX - start.x, dy = e.screenY - start.y;
@@ -52,7 +52,7 @@ async function close() {
     Native.call('drag', { dx, dy });
   });
   ball.addEventListener('pointerup', () => {
-    ball.classList.remove('held');
+    ball.classList.remove('held'); Ball3D.held(false);
     if (!start) return; start = null;
     if (!moved) { open(); return; }
     const a = samples[0], b = samples[samples.length - 1], dt = Math.max(16, b.t - a.t) / 1000;
@@ -62,7 +62,8 @@ async function close() {
   let angle = 0, squashT;
   Native.on('roll', (r) => {
     angle += (r.vx / 60) / 36 * (180 / Math.PI);
-    ball.style.rotate = angle.toFixed(1) + 'deg';
+    if (ball.classList.contains('b3d')) { ball.style.rotate = ''; Ball3D.roll(r.vx); }   // the 3D Buddy turns inside its picture
+    else ball.style.rotate = angle.toFixed(1) + 'deg';
     if (r.hit > 650) Ball3D.land(r.hit);
     if (r.hit > 650) { ball.classList.remove('squash'); void ball.offsetWidth; ball.classList.add('squash'); clearTimeout(squashT); squashT = setTimeout(() => ball.classList.remove('squash'), 260); face(r.hit > 1800 ? 'blink' : ''); }
   });
