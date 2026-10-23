@@ -26,7 +26,10 @@ async function open() {
   let at = null;
   try { at = await Native.call('window', { mode: 'open' }); } catch {}
   if (at && typeof at.x === 'number') { $('panel').style.setProperty('--ox', at.x + 'px'); $('panel').style.setProperty('--oy', at.y + 'px'); }
-  void $('panel').offsetWidth;   // lay out the tiny see-through panel first, so removing 'opening' animates from it
+  // Let the resized window paint once before the panel grows (on Windows the first frames after a resize are slow, and
+  // animating through them stuttered).
+  void $('panel').offsetWidth;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   body.classList.remove('opening'); moving = false;
   setTimeout(() => $('input').focus(), 180);
 }
@@ -180,9 +183,15 @@ async function ask(text, { voice = false } = {}) {
   say('me', text);
   const controller = new AbortController(); busy = controller;
   document.body.classList.add('busy'); face('think'); status('Thinking…'); sendButton(true);
+  if (typeof Agents !== 'undefined') Agents.refresh();
   const area = workArea();
   const thinking = say('bot', ''); thinking.classList.add('typing');
   try {
+    // You come first: an agent working in the background steps aside (it stops after its current step and tries again
+    // later). Wait for it to really stop, so it can't touch anything this turn starts.
+    if (typeof Agents !== 'undefined' && Agents.running()) { status('Pausing an agent…'); await Promise.race([Agents.yield(), new Promise((r) => setTimeout(r, 8000)), new Promise((r) => controller.signal.addEventListener('abort', r, { once: true }))]); }
+    if (controller.signal.aborted) throw new Error('stopped');
+    status('Thinking…');
     const answer = await Team.ask(text, area, { models, name: Look.name(), persona: Look.persona(), signal: controller.signal, voice });
     thinking.classList.remove('typing'); thinking.innerHTML = md(answer);
     if (voice) speak(answer);
@@ -194,12 +203,13 @@ async function ask(text, { voice = false } = {}) {
     face('');
   } finally {
     busy = null; document.body.classList.remove('busy'); sendButton(false); refreshStatus();
+    if (typeof Agents !== 'undefined') Agents.refresh();
     if (document.body.classList.contains('closed')) { /* the ball's dot stops pulsing */ }
     scroll();
   }
 }
 function stop() { if (busy) { busy.abort(); AI.stop(); } }
-Native.on('hands:stopped', stop);   // you pressed Esc while Hands Buddy was working
+Native.on('hands:stopped', () => { stop(); if (typeof Agents !== 'undefined') Agents.yield(); });   // you pressed Esc while Hands Buddy was working
 function sendButton(stopping) {
   const b = $('send'); b.classList.toggle('stop', stopping); b.setAttribute('aria-label', stopping ? 'Stop' : 'Send');
   b.innerHTML = stopping ? '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M5 12h13M12.5 6l6 6-6 6"/></svg>';
@@ -271,6 +281,7 @@ $('keySave').addEventListener('click', async () => {
   showSettings(); refreshStatus();
 });
 async function showSettings() {
+  if (typeof Agents !== 'undefined') Agents.hide();
   Look.render($('lookBox'));
   $('settings').classList.remove('hidden'); $('log').classList.add('hidden'); $('ask').classList.add('hidden'); $('chips').classList.add('hidden');
   renderProviders();

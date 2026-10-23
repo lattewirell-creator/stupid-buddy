@@ -46,8 +46,9 @@ const AI = (() => {
    */
   async function chat({ model, messages, tools, onText, signal }) {
     if (provider() !== 'ollama') return cloudChat({ model, messages, tools, signal });
-    controller = new AbortController();
-    const abort = () => controller.abort();
+    // Each step has its own controller, so stopping one (an agent stepping aside for you) can't stop another.
+    const c = new AbortController(); controller = c;
+    const abort = () => c.abort();
     if (signal) signal.addEventListener('abort', abort, { once: true });
     const stream = !tools && !!onText;
     const body = { model: model || DEFAULT_MODEL, messages, stream, think: false, keep_alive: '10m', options: { temperature: 0.3, num_ctx: 16384, num_predict: tools ? 1200 : 1600 } };   // a step never rambles on for minutes
@@ -57,8 +58,8 @@ const AI = (() => {
       body.stream = false;
       let r;
       try { r = await Native.call('ollama.request', { path: 'api/chat', body: JSON.stringify(body) }); }
-      catch (e) { throw new Error(controller.signal.aborted ? 'stopped' : 'offline'); }
-      if (controller.signal.aborted) throw new Error('stopped');
+      catch (e) { throw new Error(c.signal.aborted ? 'stopped' : 'offline'); }
+      if (c.signal.aborted) throw new Error('stopped');
       if (r.status >= 400) throw new Error(/not found/i.test(r.body) ? 'nomodel' : 'AI error: ' + String(r.body).slice(0, 160));
       const m = (JSON.parse(r.body).message) || {};
       const text = m.content || '';
@@ -66,8 +67,8 @@ const AI = (() => {
       return { content: text, toolCalls: (m.tool_calls || []).map((c, i) => ({ id: c.id || 'call_' + i, name: c.function && c.function.name, args: parseArgs(c.function && c.function.arguments) })) };
     }
     let res;
-    try { res = await fetch(BASE + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal }); }
-    catch (e) { if (controller.signal.aborted) throw new Error('stopped'); throw new Error('offline'); }
+    try { res = await fetch(BASE + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: c.signal }); }
+    catch (e) { if (c.signal.aborted) throw new Error('stopped'); throw new Error('offline'); }
     if (!res.ok) { const t = await res.text().catch(() => ''); throw new Error(/not found/i.test(t) ? 'nomodel' : 'AI error: ' + t.slice(0, 160)); }
     if (!stream) {
       const d = await res.json();
@@ -92,7 +93,7 @@ const AI = (() => {
           if (piece) { text += piece; onText(text); }
         }
       }
-    } catch (e) { if (controller.signal.aborted) throw new Error('stopped'); throw e; }
+    } catch (e) { if (c.signal.aborted) throw new Error('stopped'); throw e; }
     return { content: text, toolCalls: [] };
   }
   /** The same step through an online service (OpenAI format), sent by the app (not this page) with your key. */

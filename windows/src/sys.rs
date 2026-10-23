@@ -121,6 +121,11 @@ pub fn cursor(_w: &Window) -> Option<(i32, i32)> {
 }
 #[cfg(target_os = "linux")]
 pub fn cursor(w: &Window) -> Option<(i32, i32)> { w.cursor_position().ok().map(|p| (p.x.round() as i32, p.y.round() as i32)) }
+/// The same from any thread, without a window (teaching Buddy a task, Windows only).
+#[cfg(windows)]
+pub fn screen_cursor() -> Option<(i32, i32)> { let mut p = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 }; (unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) } != 0).then_some((p.x, p.y)) }
+#[cfg(target_os = "linux")]
+pub fn screen_cursor() -> Option<(i32, i32)> { None }
 
 /// Brings the window to the front with the keyboard focus.
 #[cfg(windows)]
