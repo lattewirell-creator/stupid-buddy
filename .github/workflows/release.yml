@@ -9,6 +9,10 @@ on:
       notes:
         description: What's new (Markdown)
         required: true
+      sign:
+        description: Sign for the updater (off only when the key isn't on GitHub yet; then installed copies don't update themselves)
+        type: boolean
+        default: true
 permissions:
   contents: write
 jobs:
@@ -42,6 +46,7 @@ jobs:
           & $nsis /V2 "/DVERSION=${{ steps.v.outputs.version }}" installer.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Sign
+        if: inputs.sign
         shell: bash
         env: { UPDATE_KEY: "${{ secrets.BUDDY_UPDATE_KEY }}" }
         run: |
@@ -54,7 +59,8 @@ jobs:
           shopt -s nullglob; mkdir -p carry
           gh release download -R lattewirell-creator/stupid-buddy -p 'The.Stupid.Buddy.Mac.zip' -p '*-android.apk' -D carry || echo "Nothing to bring along from the previous release." >&2
           setup="windows/dist/StupidBuddy-${{ steps.v.outputs.version }}-windows-setup.exe"
-          gh release create "${{ steps.v.outputs.tag }}" -R lattewirell-creator/stupid-buddy --target "$GITHUB_SHA" --title "The Stupid Buddy ${{ steps.v.outputs.tag }}" --notes "$NOTES" "$setup" "$setup.sig" carry/*
+          sig="$setup.sig"; [ -f "$sig" ] || sig=""
+          gh release create "${{ steps.v.outputs.tag }}" -R lattewirell-creator/stupid-buddy --target "$GITHUB_SHA" --title "The Stupid Buddy ${{ steps.v.outputs.tag }}" --notes "$NOTES" "$setup" $sig carry/*
 
   # The Linux package for the same version, attached to the release just published (Stupid OS installs and updates
   # Buddy from it). A release made by this workflow doesn't start linux.yml, so it's built here.
