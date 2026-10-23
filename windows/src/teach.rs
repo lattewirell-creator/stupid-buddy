@@ -29,7 +29,10 @@ fn watch(on: &AtomicBool) -> Vec<Value> {
     let t0 = Instant::now();
     let mut steps: Vec<Value> = vec![];
     let (mut left, mut right) = (false, false);
-    let mut typing: Option<Instant> = None;
+    // A burst of typing: when it was last active, and where it went, noted at its first key (by the time it ends
+    // focus may have moved on, e.g. Tab or the click on Sign in). A password anywhere in it leaves no picture.
+    let mut typing: Option<Burst> = None;
+    let swapped = imp::buttons_swapped();
     // Clear the "pressed since last time" bits from before we started (the click on Teach, the Esc of a dialog).
     for vk in 1..255 { hands::key_hit(vk); }
     std::thread::sleep(Duration::from_millis(400));
@@ -40,35 +43,51 @@ fn watch(on: &AtomicBool) -> Vec<Value> {
         let at = t0.elapsed().as_millis() as u64;
         let (l, r) = (hands::key_hit(0x01), hands::key_hit(0x02));
         let pressed = (l && !left) || (r && !right);
-        let button = if r && !right { "right" } else { "left" };
+        let physical_right = r && !right;
+        let button = if physical_right != swapped { "right" } else { "left" };   // left-handed mouse: the buttons are swapped
         left = l; right = r;
         if pressed {
-            if let Some(since) = typing.take() { steps.push(typed(at, since)); }
+            let after_password = typing.as_ref().map(|b| b.password).unwrap_or(false);
+            if let Some(b) = typing.take() { steps.push(typed(at, b)); }
             let (x, y) = crate::sys::cursor().unwrap_or((0, 0));
             let (what, window) = (imp::element_at(x, y), imp::window_title());
-            let image = hands::snap(SHOT_WIDTH, Some((x, y))).map(|s| s.0).unwrap_or_default();
+            // No picture right after a password, or of a click on another screen (only the main one is captured).
+            let image = if after_password || !imp::on_main_screen(x, y) { String::new() } else { hands::snap(SHOT_WIDTH, Some((x, y))).map(|s| s.0).unwrap_or_default() };
             steps.push(json!({ "kind": "click", "button": button, "what": what, "window": window, "at": at, "image": image }));
             continue;
         }
         // Typing: any key other than the mouse buttons and the modifiers on their own.
         let keyed = (0x08..0xFF).filter(|vk| !matches!(vk, 0x10..=0x12 | 0x14 | 0x1B | 0x5B | 0x5C | 0xA0..=0xA5)).any(hands::key_hit);
-        if keyed { typing = Some(Instant::now()); }
-        else if let Some(since) = typing { if since.elapsed() > Duration::from_millis(1200) { typing = None; steps.push(typed(at, since)); } }
+        if keyed {
+            let password = hands::focused_is_password();
+            match typing.as_mut() {
+                Some(b) => { b.last = Instant::now(); b.password |= password; }
+                None => typing = Some(Burst { last: Instant::now(), password, what: imp::focused_name(), window: imp::window_title() }),
+            }
+        } else if typing.as_ref().map(|b| b.last.elapsed() > Duration::from_millis(1200)).unwrap_or(false) {
+            steps.push(typed(at, typing.take().unwrap()));
+        }
     }
+    // Typing right before Esc still counts.
+    if let Some(b) = typing.take() { if steps.len() < MAX_STEPS { steps.push(typed(t0.elapsed().as_millis() as u64, b)); } }
     on.store(false, Ordering::SeqCst);
     steps
 }
 
-/// A pause after typing: where it went and what the screen shows now (the field's text, unless it's a password).
-fn typed(at: u64, _since: Instant) -> Value {
-    let password = hands::focused_is_password();
+struct Burst { last: Instant, password: bool, what: String, window: String }
+
+/// A pause after typing: where it went and what the screen shows now (the field's text, unless it was a password).
+fn typed(at: u64, b: Burst) -> Value {
+    let password = b.password || hands::focused_is_password();
     let image = if password { String::new() } else { hands::snap(SHOT_WIDTH, None).map(|s| s.0).unwrap_or_default() };
-    json!({ "kind": "typed", "what": imp::focused_name(), "window": imp::window_title(), "password": password, "at": at, "image": image })
+    json!({ "kind": "typed", "what": b.what, "window": b.window, "password": password, "at": at, "image": image })
 }
 
 #[cfg(windows)]
 mod imp {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetSystemMetrics, GetWindowTextW, SM_CXSCREEN, SM_CYSCREEN, SM_SWAPBUTTON};
+    pub fn buttons_swapped() -> bool { unsafe { GetSystemMetrics(SM_SWAPBUTTON) != 0 } }
+    pub fn on_main_screen(x: i32, y: i32) -> bool { unsafe { x >= 0 && y >= 0 && x < GetSystemMetrics(SM_CXSCREEN) && y < GetSystemMetrics(SM_CYSCREEN) } }
     fn describe(e: &uiautomation::UIElement) -> String {
         let name = e.get_name().unwrap_or_default();
         let kind = e.get_localized_control_type().unwrap_or_default();
@@ -97,6 +116,8 @@ mod imp {
 }
 #[cfg(not(windows))]
 mod imp {
+    pub fn buttons_swapped() -> bool { false }
+    pub fn on_main_screen(_x: i32, _y: i32) -> bool { true }
     pub fn element_at(_x: i32, _y: i32) -> String { String::new() }
     pub fn focused_name() -> String { String::new() }
     pub fn window_title() -> String { String::new() }

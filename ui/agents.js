@@ -33,19 +33,24 @@ const Agents = (() => {
   const ago = (t) => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : new Date(t).toLocaleDateString(); };
 
   /* ---------------- running one ---------------- */
-  let running = null;   // { agent id, controller }
+  let running = null;   // { agent id, controller, settled: a promise for when it has really stopped }
+  let teaching = false; // Buddy is watching you (or learning from it): agents wait
   async function run(agent, why) {
-    if (running || busy) return false;
-    const controller = new AbortController(); running = { id: agent.id, controller };
+    if (running || busy || teaching) return false;
+    let settle; const settled = new Promise((r) => (settle = r));
+    const controller = new AbortController(); running = { id: agent.id, controller, settled };
     document.body.classList.add('agent-busy');
     const skill = skills.find((s) => s.id === agent.skill);
     const text = agent.task + (skill ? `\n\nThis is how I do it myself; follow these steps:\n${skill.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` : '');
     const rec = { id: uid(), agent: agent.id, at: Date.now(), why, status: 'running', helpers: [], answer: '' };
-    runs.push(rec); save(); render();
-    const ui = { job(key) { if (HELPERS[key] && !rec.helpers.includes(HELPERS[key].name)) rec.helpers.push(HELPERS[key].name); render(); return { step() {}, done() {} }; } };
+    runs.push(rec); save(); refresh();
+    const ui = { job(key) { if (HELPERS[key] && !rec.helpers.includes(HELPERS[key].name)) rec.helpers.push(HELPERS[key].name); refresh(); return { step() {}, done() {} }; } };
     const team = Object.create(Team); team.history = [];   // its own conversation, not yours
     try {
-      rec.answer = await team.ask(text, ui, { models, name: agent.name, persona: `You are one of the user's own agents, working on your own while they do other things. Your job: ${agent.job}`, signal: controller.signal });
+      rec.answer = await team.ask(text, ui, { models, name: agent.name, persona: `You are one of the user's own agents, working on your own while they do other things. Your job: ${agent.job}`, signal: controller.signal,
+        // Using the mouse and keyboard needs you there to say yes: on its own, only an agent following something you
+        // taught it may (Run now is you being there).
+        without: skill || why === 'now' ? [] : ['hands'] });
       rec.status = 'done';
     } catch (e) {
       rec.status = e.message === 'stopped' ? 'stopped' : 'failed';
@@ -55,15 +60,17 @@ const Agents = (() => {
       agent.last = Date.now();
       if (rec.status === 'stopped' && why === 'schedule') agent.next = Date.now() + 10 * 60e3;   // you needed Buddy; try again soon
       else agent.next = nextRun(agent);
-      rec.unread = rec.status !== 'stopped'; save(); render(); badge();
+      rec.unread = rec.status !== 'stopped'; save(); refresh(); badge();
+      settle();
     }
     return true;
   }
-  /** You asked Buddy something: a running agent steps aside (it tries again in 10 minutes). */
-  function yield_() { if (running) running.controller.abort(); }
+  /** You asked Buddy something: a running agent steps aside (it tries again in 10 minutes). Resolves once it has
+   *  really stopped (its current step can't always be cut short), so it can't touch anything you start after. */
+  function yield_() { if (!running) return Promise.resolve(); running.controller.abort(); return running.settled; }
   // The clock: anything due runs, one at a time, whenever Buddy isn't busy with you.
   setInterval(() => {
-    if (running || busy) return;
+    if (running || busy || teaching) return;
     const due = agents.filter((a) => a.on && a.next && a.next <= Date.now()).sort((a, b) => a.next - b.next)[0];
     if (due) run(due, 'schedule');
   }, 20e3);
@@ -80,6 +87,8 @@ const Agents = (() => {
   }
   function hide() { view().classList.add('hidden'); for (const id of ['log', 'ask', 'chips']) $(id).classList.remove('hidden'); editing = skillEdit = null; }
   const shown = () => !view().classList.contains('hidden');
+  // From the background (a run starting or finishing): don't wipe a form you're filling in.
+  const refresh = () => { if (!editing && !skillEdit && !teaching) render(); };
   function badge() { document.body.classList.toggle('unread', runs.some((r) => r.unread)); }
 
   function render() {
@@ -124,7 +133,7 @@ const Agents = (() => {
     const acts = el('div', 'agent-acts');
     const btn = (label, fn, cls = 'chip') => { const b = el('button', cls, label); b.addEventListener('click', fn); acts.appendChild(b); return b; };
     if (isRunning) btn('Stop', () => running && running.controller.abort());
-    else { const r = btn('Run now', () => { if (running || busy) note2('Buddy is busy right now. Try again in a moment.'); else run(a, 'now'); }); r.disabled = !!running || !!busy; }
+    else { const r = btn('Run now', () => { if (running || busy || teaching) note2('Buddy is busy right now. Try again in a moment.'); else run(a, 'now'); }); r.disabled = !!running || !!busy; }
     btn(a.on ? 'Pause' : 'Resume', () => { a.on = !a.on; a.next = nextRun(a); save(); render(); });
     btn('Edit', () => { editing = Object.assign({}, a); render(); });
     c.appendChild(acts);
@@ -164,7 +173,7 @@ const Agents = (() => {
     });
     const row = el('div', 'agent-acts');
     const cancel = el('button', 'chip', 'Cancel'); cancel.type = 'button'; cancel.addEventListener('click', () => { editing = null; render(); }); row.appendChild(cancel);
-    if (a.id) { const del = el('button', 'chip danger', 'Delete agent'); del.type = 'button'; del.addEventListener('click', () => { agents = agents.filter((x) => x.id !== a.id); runs = runs.filter((r) => r.agent !== a.id); editing = null; save(); render(); }); row.appendChild(del); }
+    if (a.id) { const del = el('button', 'chip danger', 'Delete agent'); del.type = 'button'; del.addEventListener('click', () => { if (running && running.id === a.id) running.controller.abort(); agents = agents.filter((x) => x.id !== a.id); runs = runs.filter((r) => r.agent !== a.id); editing = null; save(); render(); }); row.appendChild(del); }
     f.appendChild(row);
     box.appendChild(f);
     name.focus();
@@ -173,20 +182,20 @@ const Agents = (() => {
   /* ---------------- teaching ---------------- */
   async function startTeach() {
     if (busy || running) { note2('Buddy is busy right now. Try again in a moment.'); return; }
-    hide(); close();
+    teaching = true; hide(); close();
     await new Promise((r) => setTimeout(r, 400));
-    try { await Native.call('teach.start'); } catch (e) { await open(); show(); note2(e.message); }
+    try { await Native.call('teach.start'); } catch (e) { teaching = false; await open(); show(); note2(e.message); }
   }
   Native.on('teach:done', async (steps) => {
     await open(); show();
     const useful = (steps || []).filter((s) => s.kind === 'click' || s.kind === 'typed');
-    if (useful.length < 2) { note2('Buddy didn’t see enough to learn from. Try again, and do the whole task before pressing Esc.'); return; }
+    if (useful.length < 2) { teaching = false; render(); note2('Buddy didn’t see enough to learn from. Try again, and do the whole task before pressing Esc.'); return; }
     const box = view(); box.replaceChildren(el('h2', 'serif', 'Your agents'));
     const wait = el('div', 'msg bot typing', 'Learning what you did'); box.appendChild(wait);
     document.body.classList.add('agent-busy');
     try { skillEdit = Object.assign({ id: null, at: Date.now() }, await learn(useful)); }
     catch (e) { skillEdit = { id: null, at: Date.now(), name: 'New skill', steps: useful.map(describe) }; }
-    finally { document.body.classList.remove('agent-busy'); }
+    finally { document.body.classList.remove('agent-busy'); teaching = false; }
     render();
   });
   const describe = (s) => s.kind === 'click' ? `${s.button === 'right' ? 'Right-click' : 'Click'} ${s.what || 'there'}${s.window ? ' in ' + s.window : ''}` : `Type ${s.password ? 'the password (you type it yourself)' : 'into ' + (s.what || 'the field')}${s.window ? ' in ' + s.window : ''}`;
@@ -236,5 +245,5 @@ const Agents = (() => {
   for (const a of agents) if (a.on && !a.next) a.next = nextRun(a);
   save(); badge();
   $('agentsBtn').addEventListener('click', () => (shown() ? hide() : show()));
-  return { show, hide, yield: yield_, running: () => !!running, nextRun, _state: () => ({ agents, skills, runs }) };
+  return { show, hide, refresh, yield: yield_, running: () => !!running, nextRun, _state: () => ({ agents, skills, runs }) };
 })();

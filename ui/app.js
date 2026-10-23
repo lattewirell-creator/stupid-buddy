@@ -177,7 +177,7 @@ async function ask(text) {
   text = String(text ?? $('input').value).trim();
   if (!text || busy) return;
   // You come first: an agent working in the background steps aside (it stops after its current step and tries again later).
-  if (typeof Agents !== 'undefined' && Agents.running()) Agents.yield();
+  if (typeof Agents !== 'undefined' && Agents.running()) { status('Pausing an agent…'); await Promise.race([Agents.yield(), new Promise((r) => setTimeout(r, 8000))]); }
   $('input').value = ''; grow(); $('chips').replaceChildren();
   say('me', text);
   const controller = new AbortController(); busy = controller;
@@ -195,12 +195,13 @@ async function ask(text) {
     face('');
   } finally {
     busy = null; document.body.classList.remove('busy'); sendButton(false); refreshStatus();
+    if (typeof Agents !== 'undefined') Agents.refresh();
     if (document.body.classList.contains('closed')) { /* the ball's dot stops pulsing */ }
     scroll();
   }
 }
 function stop() { if (busy) { busy.abort(); AI.stop(); } }
-Native.on('hands:stopped', stop);   // you pressed Esc while Hands Buddy was working
+Native.on('hands:stopped', () => { stop(); if (typeof Agents !== 'undefined') Agents.yield(); });   // you pressed Esc while Hands Buddy was working
 function sendButton(stopping) {
   const b = $('send'); b.classList.toggle('stop', stopping); b.setAttribute('aria-label', stopping ? 'Stop' : 'Send');
   b.innerHTML = stopping ? '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M5 12h13M12.5 6l6 6-6 6"/></svg>';

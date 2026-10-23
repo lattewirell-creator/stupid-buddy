@@ -258,11 +258,13 @@ fn main() {
     });
 }
 
-/// The red bar at the top of the screen while Hands Buddy works. Clicks go through it and screenshots skip it.
+/// The bar at the top of the screen while Hands Buddy works (red) or Buddy watches you teach it (blue). Clicks go
+/// through it and screenshots skip it.
 const HANDS_BAR: &str = "<div style=\"background:rgba(214,77,61,.96)\">Buddy is using your computer · press Esc to stop</div>";
 const TEACH_BAR: &str = "<div style=\"background:rgba(79,120,181,.96)\">Buddy is watching · do the task, then press Esc</div>";
 fn banner(target: &EventLoopWindowTarget<Ev>, text: &str) -> (Window, WebView) {
-    let mut wb = WindowBuilder::new().with_title("Buddy is using your computer").with_inner_size(LogicalSize::new(430.0, 34.0))
+    let title = if text == TEACH_BAR { "Buddy is watching" } else { "Buddy is using your computer" };
+    let mut wb = WindowBuilder::new().with_title(title).with_inner_size(LogicalSize::new(430.0, 34.0))
         .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_focused(false);
     #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_skip_taskbar(true).with_undecorated_shadow(false); }
     let w = wb.build(target).expect("banner");
@@ -316,6 +318,7 @@ fn handle(app: &mut App, body: &str) {
         "update.version" => app.reply(id, Ok(json!(update::VERSION))),
         "hands.permissions" | "hands.askPermissions" => app.reply(id, Ok(json!({ "screen": true, "control": true }))),
         "hands.start" => {
+            if app.teach.on.load(Ordering::SeqCst) { return app.reply(id, Err("Buddy is watching you teach it a task right now.".into())); }
             let task = m.get("task").and_then(Value::as_str).unwrap_or("this task").to_string();
             let p = app.proxy.clone();
             std::thread::spawn(move || {
