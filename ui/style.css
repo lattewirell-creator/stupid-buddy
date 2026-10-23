@@ -244,6 +244,8 @@ body.speaking.closed #bubble:not(:empty) { display: block; }
 #bubble.tail-right::after { right: -8px; transform: rotate(-135deg); }
 #bubble.tail-left::after { left: -8px; transform: rotate(45deg); }
 #bubble.low::after { top: auto; bottom: 22px; }
+#bubble.low.tail-right { transform-origin: right calc(100% - 29px); } #bubble.low.tail-left { transform-origin: left calc(100% - 29px); }
+#bubble.tail-right:not(.low) { transform-origin: right var(--ty, 46px); } #bubble.tail-left:not(.low) { transform-origin: left var(--ty, 46px); }
 .bubble-acts { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
 .bubble-acts .chip { height: 28px; font-size: 12.5px; }
 .chip.primary-chip { background: var(--accent); color: #fff; border-color: var(--accent); }
