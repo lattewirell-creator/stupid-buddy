@@ -5,15 +5,26 @@
 const Speech = (() => {
   const bubble = $('bubble');
   let speaking = false, hideT = null, token = 0;
+  // What Buddy is saying now, and a question that's still unanswered (the update prompt): if the bubble goes away
+  // before you answer, it waits in the chat for the next time you open it.
+  let current = null, unanswered = null, waiting = null;
   const closed = () => document.body.classList.contains('closed');
   const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Flying after a fling: the app sends "roll" every frame until "landed". The bubble waits for him to land.
+  let lastRoll = 0;
+  Native.on('roll', () => { lastRoll = Date.now(); });
+  Native.on('landed', () => { lastRoll = 0; });
+  const flying = () => Date.now() - lastRoll < 500;
 
   /** Says text. actions: [{ label, fn, primary }] become buttons; ms: how long it stays (0: until answered). */
   async function say(text, { actions = [], ms = 8000 } = {}) {
     if (!closed()) { inChat(text, actions); return; }
-    if (moving || document.body.classList.contains('dragging')) return;
+    // Busy opening, closing or flying: say it in a moment instead (only the latest thing waits).
+    if (moving || flying()) { waiting = { text, actions, ms }; return; }
     const my = ++token;
     clearTimeout(hideT);
+    current = { text, actions };
+    if (actions.length) unanswered = current;
     if (!speaking) {
       speaking = true;
       document.body.classList.add('speaking', 'switching');   // the ball hides for the frame the window changes size
@@ -27,7 +38,7 @@ const Speech = (() => {
     const row = el('div', 'bubble-acts');
     for (const a of actions) {
       const b = el('button', 'chip' + (a.primary ? ' primary-chip' : ''), a.label);
-      b.addEventListener('click', (e) => { e.stopPropagation(); hush(); a.fn(); });
+      b.addEventListener('click', (e) => { e.stopPropagation(); unanswered = null; a.fn(); });
       row.appendChild(b);
     }
     bubble.replaceChildren(words, ...(actions.length ? [row] : []));
@@ -37,6 +48,8 @@ const Speech = (() => {
     else for (let i = 1; i <= text.length && my === token; i++) { words.textContent = text.slice(0, i); await new Promise((r) => setTimeout(r, 16)); }
     if (my === token && ms) hideT = setTimeout(hush, ms);
   }
+  setInterval(() => { if (waiting && !moving && !flying()) { const w = waiting; waiting = null; say(w.text, w); } }, 700);
+
   /** Where the ball sits in the bigger window (from the app), and the bubble on the side with room. */
   function place(at) {
     const W = innerWidth, H = innerHeight;
@@ -46,23 +59,35 @@ const Speech = (() => {
     const right = x > W / 2;
     bubble.classList.toggle('tail-right', right); bubble.classList.toggle('tail-left', !right);
     const width = Math.min(240, (right ? x - 52 : W - x - 52) - 8);
+    const top = Math.max(8, Math.min(H - 150, y - 60));
     bubble.style.width = width + 'px';
     bubble.style.left = (right ? x - 52 - width : x + 52) + 'px';
-    bubble.style.top = Math.max(8, Math.min(H - 150, y - 60)) + 'px';
+    bubble.style.top = top + 'px';
+    bubble.style.setProperty('--ty', Math.max(14, y - top - 7) + 'px');   // the tail points at Buddy
   }
   /** The bubble goes away and the window becomes the ball again. */
   async function hush() {
     if (!speaking) return;
-    ++token; clearTimeout(hideT); speaking = false;
+    const my = ++token; clearTimeout(hideT); speaking = false; current = null;
     bubble.replaceChildren();
     document.body.classList.add('switching');
     if (closed()) { try { await Native.call('window', { mode: 'ball' }); } catch {} }
+    if (my !== token) return;   // he started saying something else meanwhile; that one sets things up
     document.body.classList.remove('speaking', 'switching');
     document.body.style.removeProperty('--bx'); document.body.style.removeProperty('--by');
+  }
+  /** The chat is about to open: the bubble goes, and a question you haven't answered moves into the chat. */
+  async function handoff() {
+    if (waiting && waiting.actions.length) unanswered = waiting;
+    waiting = null;
+    await hush();
+    if (unanswered) { const u = unanswered; unanswered = null; return u; }
+    return null;
   }
   function inChat(text, actions) {
     const b = el('div', 'msg bot'); b.innerHTML = md(text); log.appendChild(b);
     if (actions.length) {
+      unanswered = null;
       const row = el('div', 'note');
       for (const a of actions) { const btn = el('button', null, a.label); btn.addEventListener('click', () => { row.remove(); a.fn(); }); row.appendChild(btn); }
       log.appendChild(row);
@@ -71,7 +96,7 @@ const Speech = (() => {
   }
 
   /* ---------------- a new Buddy ---------------- */
-  Native.on('update:available', (version) => say(`Psst! A new Buddy (${version}) is here 🎉`, { ms: 0, actions: [
+  Native.on('update:available', (version) => say(`Psst! A new Buddy (${version}) is here 🎉`, { ms: 60000, actions: [
     { label: 'Update now', primary: true, fn: async () => {
       say('Updating… see you in a few seconds!', { ms: 8000 });
       const m = await Native.call('update.install').catch((e) => e.message);
@@ -106,7 +131,7 @@ const Speech = (() => {
     'Remember to save your work. I say this with love.',
   ];
   const chatterOn = () => { try { return localStorage.getItem('chatter') !== 'off'; } catch { return true; } };
-  const quiet = () => busy || speaking || !closed() || !ready
+  const quiet = () => busy || speaking || waiting || flying() || !closed() || !ready
     || (typeof Agents !== 'undefined' && (Agents.running() || Agents.teaching()))
     || document.body.classList.contains('hands');
   let recent = [];
@@ -143,5 +168,5 @@ const Speech = (() => {
     setTimeout(() => { document.body.classList.remove('hello'); hop(); if (chatterOn()) say(greet, { ms: 4500 }); }, calm() ? 0 : 700);
   }
 
-  return { say, hush, hello, active: () => speaking, LINES };
+  return { say, hush, handoff, inChat, hello, active: () => speaking, LINES };
 })();

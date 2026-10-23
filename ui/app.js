@@ -21,6 +21,8 @@ let moving = false;
 async function open() {
   if (moving || !body.classList.contains('closed')) return;
   moving = true;
+  // A speech bubble goes away first; a question in it you haven't answered yet waits in the chat (speech.js).
+  const asked = typeof Speech !== 'undefined' ? await Speech.handoff() : null;
   Ball3D.visible($('ball'), false);
   body.classList.add('opening'); body.classList.remove('closed');   // the panel is there, but tiny and see-through
   let at = null;
@@ -32,6 +34,7 @@ async function open() {
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   body.classList.remove('opening'); moving = false;
   setTimeout(() => $('input').focus(), 180);
+  if (asked) Speech.inChat(asked.text, asked.actions);
 }
 async function close() {
   if (onPhone || moving || body.classList.contains('closed')) return;
@@ -45,8 +48,9 @@ async function close() {
 }
 {
   // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
-  const ball = $('ball'); let start = null, moved = false, samples = [];
-  ball.addEventListener('pointerdown', (e) => { if (typeof Speech !== 'undefined' && Speech.active()) Speech.hush(); start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); Ball3D.held(true); });
+  const ball = $('ball'); let start = null, moved = false, samples = [], hushed = false;
+  // Grabbing Buddy while he talks hides the bubble; a plain click then only does that (it doesn't open the chat too).
+  ball.addEventListener('pointerdown', (e) => { hushed = typeof Speech !== 'undefined' && Speech.active(); if (hushed) Speech.hush(); start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); Ball3D.held(true); });
   ball.addEventListener('pointermove', (e) => {
     if (!start) return;
     const dx = e.screenX - start.x, dy = e.screenY - start.y;
@@ -58,7 +62,7 @@ async function close() {
   ball.addEventListener('pointerup', () => {
     ball.classList.remove('held'); Ball3D.held(false);
     if (!start) return; start = null;
-    if (!moved) { open(); return; }
+    if (!moved) { if (!hushed) open(); return; }
     const a = samples[0], b = samples[samples.length - 1], dt = Math.max(16, b.t - a.t) / 1000;
     Native.call('release', { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt });
   });
