@@ -15,12 +15,13 @@ const Speech = (() => {
   Native.on('roll', () => { lastRoll = Date.now(); });
   Native.on('landed', () => { lastRoll = 0; });
   const flying = () => Date.now() - lastRoll < 500;
+  const held = () => $('ball').classList.contains('held');   // you're dragging him
 
   /** Says text. actions: [{ label, fn, primary }] become buttons; ms: how long it stays (0: until answered). */
   async function say(text, { actions = [], ms = 8000 } = {}) {
     if (!closed()) { inChat(text, actions); return; }
     // Busy opening, closing or flying: say it in a moment instead (only the latest thing waits).
-    if (moving || flying()) { waiting = { text, actions, ms }; return; }
+    if (moving || flying() || held()) { waiting = { text, actions, ms }; return; }
     const my = ++token;
     clearTimeout(hideT);
     current = { text, actions };
@@ -48,7 +49,7 @@ const Speech = (() => {
     else for (let i = 1; i <= text.length && my === token; i++) { words.textContent = text.slice(0, i); await new Promise((r) => setTimeout(r, 16)); }
     if (my === token && ms) hideT = setTimeout(hush, ms);
   }
-  setInterval(() => { if (waiting && !moving && !flying()) { const w = waiting; waiting = null; say(w.text, w); } }, 700);
+  setInterval(() => { if (waiting && !moving && !flying() && !held()) { const w = waiting; waiting = null; say(w.text, w); } }, 700);
 
   /** Where the ball sits in the bigger window (from the app), and the bubble on the side with room. */
   function place(at) {
@@ -59,11 +60,18 @@ const Speech = (() => {
     const right = x > W / 2;
     bubble.classList.toggle('tail-right', right); bubble.classList.toggle('tail-left', !right);
     const width = Math.min(240, (right ? x - 52 : W - x - 52) - 8);
-    const top = Math.max(8, Math.min(H - 150, y - 60));
     bubble.style.width = width + 'px';
     bubble.style.left = (right ? x - 52 - width : x + 52) + 'px';
-    bubble.style.top = top + 'px';
-    bubble.style.setProperty('--ty', Math.max(14, y - top - 7) + 'px');   // the tail points at Buddy
+    // Buddy in the top half: the bubble hangs from his height; in the bottom half it grows upwards from it, so the
+    // tail always meets him whatever the length of the text.
+    const low = y > H / 2;
+    bubble.classList.toggle('low', low);
+    if (low) { bubble.style.top = 'auto'; bubble.style.bottom = Math.max(8, H - y - 29) + 'px'; }
+    else {
+      const top = Math.max(8, y - 28);
+      bubble.style.bottom = 'auto'; bubble.style.top = top + 'px';
+      bubble.style.setProperty('--ty', Math.max(10, y - top - 7) + 'px');
+    }
   }
   /** The bubble goes away and the window becomes the ball again. */
   async function hush() {
@@ -131,7 +139,7 @@ const Speech = (() => {
     'Remember to save your work. I say this with love.',
   ];
   const chatterOn = () => { try { return localStorage.getItem('chatter') !== 'off'; } catch { return true; } };
-  const quiet = () => busy || speaking || waiting || flying() || !closed() || !ready
+  const quiet = () => busy || speaking || waiting || flying() || held() || !closed() || !ready
     || (typeof Agents !== 'undefined' && (Agents.running() || Agents.teaching()))
     || document.body.classList.contains('hands');
   let recent = [];
@@ -168,5 +176,8 @@ const Speech = (() => {
     setTimeout(() => { document.body.classList.remove('hello'); hop(); if (chatterOn()) say(greet, { ms: 4500 }); }, calm() ? 0 : 700);
   }
 
-  return { say, hush, handoff, inChat, hello, active: () => speaking, LINES };
+  /** You checked for updates yourself (Settings): the old question is answered. */
+  const forget = () => { unanswered = null; if (waiting && waiting.actions.length) waiting = null; };
+
+  return { say, hush, handoff, forget, inChat, hello, active: () => speaking, LINES };
 })();

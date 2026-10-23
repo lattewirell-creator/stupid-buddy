@@ -326,6 +326,7 @@ if (window.__platform === 'windows') {
   Native.call('update.version').then((v) => { btn.textContent = `Check for updates (you have ${v})`; }).catch(() => {});
   btn.addEventListener('click', async () => {
     btn.disabled = true; note.classList.remove('hidden'); note.textContent = 'Checking…';
+    Speech.forget();
     try { note.textContent = (await Native.call('update.check')) || 'You have the newest Buddy.'; } catch (e) { note.textContent = e.message; }
     btn.disabled = false;
   });
