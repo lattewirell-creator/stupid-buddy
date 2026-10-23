@@ -245,5 +245,5 @@ const Agents = (() => {
   for (const a of agents) if (a.on && !a.next) a.next = nextRun(a);
   save(); badge();
   $('agentsBtn').addEventListener('click', () => (shown() ? hide() : show()));
-  return { show, hide, refresh, yield: yield_, running: () => !!running, nextRun, _state: () => ({ agents, skills, runs }) };
+  return { show, hide, refresh, yield: yield_, running: () => !!running, teaching: () => teaching, nextRun, _state: () => ({ agents, skills, runs }) };
 })();

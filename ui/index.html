@@ -10,6 +10,7 @@
      team.js (Buddy and the helpers), app.js (this window), agents.js (your own agents and what you taught Buddy). -->
 <body class="closed">
   <button id="ball" class="ball big" aria-label="Open Buddy"><i></i><i></i><span id="ballDot"></span></button>
+  <div id="bubble" class="bubble" role="status" aria-live="polite"></div>
 
   <main id="panel">
     <header class="head">
@@ -55,6 +56,10 @@
         <button id="addRoot" class="chip">Allow another folder…</button>
       </div>
       <div class="group">
+        <div class="label">Chatter</div>
+        <label class="toggle"><input id="chatterBox" type="checkbox"> Buddy says something fun now and then</label>
+      </div>
+      <div class="group">
         <div class="label">The team</div>
         <div id="teamList"></div>
       </div>
@@ -78,6 +83,7 @@
 <script src="ball3d.js"></script>
 <script src="app.js"></script>
 <script src="agents.js"></script>
+<script src="speech.js"></script>
 <script type="module" src="buddy3d.js"></script>
 </body>
 </html>
