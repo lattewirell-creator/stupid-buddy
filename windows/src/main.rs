@@ -24,7 +24,8 @@ use tao::window::{Window, WindowBuilder};
 use wry::{http::Response, WebView, WebViewBuilder};
 
 static WEB: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/../ui");
-const BALL: (f64, f64) = (92.0, 92.0);
+// The closed window has room around Buddy's ball: picked up he throws his arms up, and landing squashes him wider.
+const BALL: (f64, f64) = (120.0, 120.0);
 const OPEN: (f64, f64) = (440.0, 660.0);
 
 /// Work handed back to the main thread.

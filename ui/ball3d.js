@@ -7,6 +7,9 @@ const Ball3D = (() => {
   const HOSTS = '#ball, .look-preview';
   const HATS_3D = { tophat: 'tophat', cap: 'cap', crown: 'crown', headphones: 'headphones' };   // the rest stay emoji hats
   const views = new Map();   // element → its 3D Buddy
+  // Buddy is drawn the same size as in the old 92 px window, inside a 120 px one: the margin is room for raised arms
+  // and a squashed landing, so nothing gets cut off at the window's edge.
+  const FIT = 92 / 120, Z = 2 * FIT;
 
   const on = () => !!window.Buddy3D && window.__platform !== 'android' && Look.get().three !== false && (window.__force3d || !matchMedia('(prefers-reduced-motion: reduce)').matches);   // __force3d: the Windows showcase test
 
@@ -17,7 +20,7 @@ const Ball3D = (() => {
     let b3 = views.get(el);
     if (!on()) { if (b3) { b3.destroy(); views.delete(el); el.classList.remove('b3d', 'b3d-hat'); } return; }
     if (!b3) {
-      b3 = window.Buddy3D.create(el, { interactive: false, zoom: 2, aimY: 0.1 });
+      b3 = window.Buddy3D.create(el, { interactive: false, zoom: el.id === 'ball' ? Z : 2, aimY: 0.1 });
       if (!b3) return;
       views.set(el, b3); el.classList.add('b3d');
       b3.setVisible(true);
@@ -26,7 +29,8 @@ const Ball3D = (() => {
     const hat = HATS_3D[L.hat] || 'none';
     b3.setLook({ shape: L.shape, color: Look.color(), hat, glasses: 'none' });
     // Room for everything inside the window: a hat needs space above, and hard bumps squash Buddy wider.
-    if (hat !== 'none') b3.setFraming(1.62, 0.5); else b3.setFraming(2, 0.1);
+    const fit = el.id === 'ball' ? FIT : 1;   // the Settings preview has no extra room around it
+    if (hat !== 'none') b3.setFraming(1.62 * fit, 0.5); else b3.setFraming(2 * fit, 0.1);
     el.classList.toggle('b3d-hat', hat !== 'none');   // the 3D Buddy wears it; hide the emoji one
   }
   /** Buddy's mood from app.js (happy, think, work, sleepy…). */
