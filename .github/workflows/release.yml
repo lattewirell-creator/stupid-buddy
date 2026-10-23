@@ -1,0 +1,57 @@
+# Release for Windows from GitHub's own Windows machine: builds the installer, signs it for the app's updater with the
+# update key (the BUDDY_UPDATE_KEY secret; scripts/sign-ci.mjs checks it's the key the app trusts), and publishes the
+# GitHub Release that installed copies update from. The Mac and Android downloads come along from the previous
+# release, so the website's buttons keep working (Macs keep their version). Bump the version first; run by hand.
+name: Release (Windows)
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: What's new (Markdown)
+        required: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Version
+        id: v
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' windows/Cargo.toml | head -1)
+          tag=v$version
+          echo "version=$version" >> "$GITHUB_OUTPUT"; echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" -R lattewirell-creator/stupid-buddy >/dev/null 2>&1; then echo "Release $tag already exists: bump the version first." >&2; exit 1; fi
+        env: { GH_TOKEN: "${{ github.token }}" }
+      - name: Rust
+        run: rustup update stable && rustup default stable
+      - name: Test and build
+        working-directory: windows
+        run: cargo test --release && cargo build --release
+      - name: Installer
+        working-directory: windows
+        shell: pwsh
+        run: |
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          for ($i = 0; $i -lt 4 -and -not (Test-Path $nsis); $i++) { choco install nsis -y --no-progress; if (-not (Test-Path $nsis)) { Start-Sleep -Seconds 20 } }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          & $nsis /V2 "/DVERSION=${{ steps.v.outputs.version }}" installer.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Sign
+        shell: bash
+        env: { UPDATE_KEY: "${{ secrets.BUDDY_UPDATE_KEY }}" }
+        run: |
+          if [ -z "$UPDATE_KEY" ]; then echo "The BUDDY_UPDATE_KEY secret isn't set: add the update key first." >&2; exit 1; fi
+          node scripts/sign-ci.mjs "windows/dist/StupidBuddy-${{ steps.v.outputs.version }}-windows-setup.exe"
+      - name: Publish
+        shell: bash
+        env: { GH_TOKEN: "${{ github.token }}", NOTES: "${{ inputs.notes }}" }
+        run: |
+          shopt -s nullglob; mkdir -p carry
+          gh release download -R lattewirell-creator/stupid-buddy -p 'The.Stupid.Buddy.Mac.zip' -p '*-android.apk' -D carry || echo "Nothing to bring along from the previous release." >&2
+          setup="windows/dist/StupidBuddy-${{ steps.v.outputs.version }}-windows-setup.exe"
+          gh release create "${{ steps.v.outputs.tag }}" -R lattewirell-creator/stupid-buddy --target "$GITHUB_SHA" --title "The Stupid Buddy ${{ steps.v.outputs.tag }}" --notes "$NOTES" "$setup" "$setup.sig" carry/*
