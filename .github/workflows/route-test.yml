@@ -1,0 +1,31 @@
+# Routing test on GitHub's machine: Ollama with Buddy's default model, then scripts/route-test.mjs (does Buddy hand
+# each request to the right helper?). The model runs on the CPU here, so it takes a while. Run by hand from Actions.
+name: Routing test
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Ollama model
+        default: qwen3-vl:8b-instruct
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > ollama.log 2>&1 &)
+          for i in $(seq 1 30); do curl -s localhost:11434/api/tags >/dev/null && break; sleep 1; done
+      - name: Model
+        env: { MODEL: "${{ inputs.model }}" }
+        run: ollama pull "$MODEL"
+      - name: Route
+        env: { MODEL: "${{ inputs.model }}" }
+        run: set -o pipefail; node scripts/route-test.mjs --model "$MODEL" | tee route-test.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: route-test, path: "route-test.txt\nollama.log" }
