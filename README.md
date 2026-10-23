@@ -6,6 +6,7 @@ Buddy from The Stupid Browser, living on your Mac, Windows or Linux desktop (and
 - **Writer Buddy** writes emails, notes, summaries and documents
 - **Web Buddy** looks things up and brings back facts with sources
 - **Hands Buddy** (Mac and Windows for now) uses other apps for you: it looks at the screen, clicks and types
+- **System Buddy** (Linux) opens apps and Settings and does the quick things: volume, Wi-Fi, dark mode, timers
 
 Click Buddy's ball, say what you need, and watch the team work. Buddy always asks before moving, renaming, replacing or deleting anything (in an alert only you can answer), and helpers only use the folders you allow.
 
@@ -37,6 +38,10 @@ For This Mac: install Ollama, then `ollama pull qwen3-vl:8b-instruct` (6 GB). On
 **Windows:** download `StupidBuddy-<version>-windows-setup.exe` and run it (Windows 10 or 11, no administrator needed). It isn't signed: if Windows SmartScreen warns you, click More info → Run anyway. Keys are kept with Windows' own per-user encryption. Hands Buddy needs no extra permission on Windows; it still asks before every task, and Esc stops it.
 
 **Linux:** download `StupidBuddy-<version>-linux-amd64.deb` and open it, or `sudo apt install ./StupidBuddy-<version>-linux-amd64.deb` (Ubuntu 24.04 or newer, or anything with WebKitGTK 4.1). Keys are kept in your system's keyring (GNOME Keyring); with no keyring Buddy won't save them at all. Your system's software updates keep Buddy up to date. Hands Buddy isn't on Linux yet: Wayland keeps other apps' screens and keyboards private, so for now it's Mac and Windows only. Buddy opens through XWayland so its ball can float, be dragged and thrown like on the other systems.
+
+On Linux Buddy also has **System Buddy**, which opens apps and Settings, changes the volume, brightness, Wi-Fi, Bluetooth, dark mode and do-not-disturb, locks the screen, takes screenshots, sets timers and reminders, and tells you how the battery is doing (turning Wi-Fi or Bluetooth off asks you first). You can **talk to Buddy** too: press the mic, speak (Swedish, English or another language), and it stops when you do. Hearing needs an AI that can listen, Groq or Google Gemini (Ollama and OpenRouter can't yet); answers you asked out loud are read aloud with speech-dispatcher (switch it off in Settings).
+
+**Buddy in Stupid OS:** Buddy starts with the computer (`stupid-buddy --background`, from `/usr/share/stupid-buddy/stupid-buddy-autostart.desktop`) and **Super+Space** summons it from anywhere (`stupid-buddy --summon`; `--summon --voice` opens it listening). Only one Buddy runs at a time.
 
 **Android:** download `StupidBuddy-<version>-android.apk` on your phone and open it (Android 8 or newer). The phone uses an online AI with a free key (Groq, Gemini or OpenRouter), kept in the phone's secure storage. File Buddy works in folders you allow; deleting isn't offered on the phone.
 

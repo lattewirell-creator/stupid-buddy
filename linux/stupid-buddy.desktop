@@ -10,3 +10,8 @@ Categories=Utility;
 Keywords=assistant;AI;files;writer;web;
 StartupNotify=false
 StartupWMClass=stupid-buddy
+Actions=talk;
+
+[Desktop Action talk]
+Name=Talk to Buddy
+Exec=stupid-buddy --summon --voice

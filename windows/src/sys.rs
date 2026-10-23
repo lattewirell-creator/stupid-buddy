@@ -122,6 +122,22 @@ pub fn cursor(_w: &Window) -> Option<(i32, i32)> {
 #[cfg(target_os = "linux")]
 pub fn cursor(w: &Window) -> Option<(i32, i32)> { w.cursor_position().ok().map(|p| (p.x.round() as i32, p.y.round() as i32)) }
 
+/// Brings the window to the front with the keyboard focus.
+#[cfg(windows)]
+pub fn focus(w: &Window, _startup_id: &str) { w.set_focus(); }
+/// Brings the window to the front with the keyboard focus. GNOME only gives the focus to an app that shows it was
+/// asked to (focus-stealing prevention): the desktop's startup id when a summon has one, else the X server's time
+/// "now", since a summon always follows something you just did.
+#[cfg(target_os = "linux")]
+pub fn focus(w: &Window, startup_id: &str) {
+    use gtk::prelude::*;
+    use tao::platform::unix::WindowExtUnix;
+    let gw = w.gtk_window();
+    if !startup_id.is_empty() { gw.set_startup_id(startup_id); }
+    let now = gw.window().and_then(|g| g.downcast::<gdkx11::X11Window>().ok()).map(|x| gdkx11::functions::x11_get_server_time(&x)).unwrap_or(0);
+    gw.present_with_time(now);
+}
+
 /// Buddy is a small window that floats where you put it, and only X11 lets an app place its own windows and keep
 /// them on top: on Wayland (GNOME's default) the ball couldn't be dragged, thrown or remembered. So GTK opens
 /// Buddy through XWayland, which GNOME always runs, and falls back to Wayland if there's no X at all. Set before

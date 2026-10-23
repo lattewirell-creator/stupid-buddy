@@ -5,6 +5,7 @@
 //   node scripts/route-test.mjs                      # Ollama on this computer (qwen3-vl:8b-instruct)
 //   node scripts/route-test.mjs --model llama3.1:8b  # another Ollama model
 //   GROQ_API_KEY=… node scripts/route-test.mjs --provider groq     (also gemini, openrouter)
+//   node scripts/route-test.mjs --platform linux     # the Linux team: System Buddy, no Hands Buddy
 import fs from 'node:fs';
 import vm from 'node:vm';
 import path from 'node:path';
@@ -14,6 +15,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (name, dflt) => { const i = process.argv.indexOf('--' + name); return i > 0 ? process.argv[i + 1] : dflt; };
 const provider = arg('provider', 'ollama');
 const model = arg('model', undefined);
+const platform = arg('platform', undefined);
 const BASES = { gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/', groq: 'https://api.groq.com/openai/v1/', openrouter: 'https://openrouter.ai/api/v1/' };
 const key = process.env[provider.toUpperCase() + '_API_KEY'];
 if (provider !== 'ollama' && !key) { console.error(`Set ${provider.toUpperCase()}_API_KEY first.`); process.exit(1); }
@@ -34,6 +36,10 @@ const CASES = [
   ['Skriv ett kort tack-mejl till Lisa för igår', ['writer']],
   ['Vad kostar ett SL-kort för en månad?', ['web']],
 ];
+if (platform === 'linux') {
+  CASES.splice(CASES.findIndex(([, w]) => w.includes('hands')), 1);   // no Hands Buddy on Linux
+  CASES.push(['Turn the volume down a bit', ['system']], ['Sätt på mörkt läge', ['system']], ['Remind me to call mom in 20 minutes', ['system']], ['Öppna Inställningar för wifi', ['system']]);
+}
 
 // A window for the two scripts: the app bridge answers like the real app, minus anything that touches the computer.
 const reply = (id, ok, value) => setTimeout(() => ctx.window.__native.reply(id, ok, value), 0);
@@ -46,6 +52,10 @@ async function bridge(msg) {
       return reply(msg.id, true, { status: r.status, body: await r.text() });
     } catch (e) { return reply(msg.id, false, 'offline'); }
   }
+  if (msg.op === 'ollama.request') {   // --platform windows/linux: Ollama goes through the app
+    try { const r = await fetch('http://localhost:11434/' + msg.path, { method: msg.body ? 'POST' : 'GET', body: msg.body }); return reply(msg.id, true, { status: r.status, body: await r.text() }); }
+    catch (e) { return reply(msg.id, false, 'offline'); }
+  }
   reply(msg.id, false, 'not in the test');
 }
 const store = new Map([['provider', provider]]);
@@ -54,6 +64,7 @@ const ctx = vm.createContext({
   localStorage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) },
 });
 ctx.window = ctx;
+ctx.__platform = platform;
 ctx.window.webkit = { messageHandlers: { buddy: { postMessage: (m) => { bridge(m); } } } };
 for (const f of ['ui/ai.js', 'ui/team.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 // The helpers only say they're done; the test is about who gets the work.

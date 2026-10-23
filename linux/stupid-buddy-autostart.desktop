@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=The Stupid Buddy
+Comment=Buddy on your desktop from the start
+Exec=stupid-buddy --background
+Icon=stupid-buddy
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3

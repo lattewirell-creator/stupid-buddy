@@ -27,11 +27,13 @@ zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 uiautomation = "0.25.1"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_UI_Shell"] }
 
-# Linux: GTK (the same one tao and wry use) for alerts and the screen's work area, and the Secret Service
-# (GNOME Keyring) for AI keys.
+# Linux: GTK (the same one tao and wry use) for alerts, the screen's work area, finding apps and taking the focus,
+# and the Secret Service (GNOME Keyring) for AI keys.
 [target.'cfg(target_os = "linux")'.dependencies]
+gdkx11 = "0.18"
 gtk = "0.18"
 keyring = { version = "3.6", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+libc = "0.2"
 
 [profile.release]
 opt-level = "s"
@@ -48,14 +50,18 @@ name = "stupid-buddy"
 maintainer = "Lattewirell <lattewirell@gmail.com>"
 copyright = "lattewirell-creator"
 license-file = ["../LICENSE", "0"]
-extended-description = "Buddy from The Stupid Browser on your desktop, with a small team that does work for you: File Buddy, Writer Buddy and Web Buddy."
+extended-description = "Buddy from The Stupid Browser on your desktop, with a small team that does work for you: File Buddy, Writer Buddy, Web Buddy and System Buddy. Talk to it, or summon it from anywhere with stupid-buddy --summon."
 section = "utils"
 revision = ""
 priority = "optional"
 depends = "$auto"
+# Recording (pw-record or parec), reading aloud, notifications, and the keyring for AI keys.
+recommends = "pipewire-bin | pulseaudio-utils, speech-dispatcher, libnotify-bin, gnome-keyring"
 assets = [
     ["target/release/stupid-buddy", "usr/bin/", "755"],
     ["../linux/stupid-buddy.desktop", "usr/share/applications/", "644"],
+    # Not switched on by the package: a system that starts Buddy at login (Stupid OS) links it into /etc/xdg/autostart.
+    ["../linux/stupid-buddy-autostart.desktop", "usr/share/stupid-buddy/", "644"],
     ["target/linux-icons/16x16/apps/stupid-buddy.png", "usr/share/icons/hicolor/16x16/apps/", "644"],
     ["target/linux-icons/24x24/apps/stupid-buddy.png", "usr/share/icons/hicolor/24x24/apps/", "644"],
     ["target/linux-icons/32x32/apps/stupid-buddy.png", "usr/share/icons/hicolor/32x32/apps/", "644"],

@@ -52,8 +52,8 @@ const AI = (() => {
     const stream = !tools && !!onText;
     const body = { model: model || DEFAULT_MODEL, messages, stream, think: false, keep_alive: '10m', options: { temperature: 0.3, num_ctx: 16384, num_predict: tools ? 1200 : 1600 } };   // a step never rambles on for minutes
     if (tools) body.tools = tools;
-    if (onWindows) {
-      // Windows: the app sends it to Ollama (no streaming; the team never streams).
+    if (viaApp) {
+      // Windows and Linux: the app sends it to Ollama (no streaming; the team never streams).
       body.stream = false;
       let r;
       try { r = await Native.call('ollama.request', { path: 'api/chat', body: JSON.stringify(body) }); }

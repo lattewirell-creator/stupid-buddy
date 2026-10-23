@@ -36,6 +36,23 @@ jobs:
           for want in 'DEVICE PC' 'OK files.roots' 'OK files.write' 'OK files.read' 'FAIL hands.start Hands Buddy isn’t on Linux yet' 'OK window' 'DONE'; do
             grep -qF "$want" "$STUPID_BUDDY_LOG" || { echo "Missing: $want"; exit 1; }
           done
+      - name: System Buddy (dry run) and summoning
+        run: |
+          # Every System Buddy action logs the command it would run; then a second start hands "summon" to the first.
+          export STUPID_BUDDY_SYSTEMTEST=1 STUPID_BUDDY_LOG="$RUNNER_TEMP/system.log" STUPID_BUDDY_DATA="$RUNNER_TEMP/buddy-system"
+          timeout 120 dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" windows/target/release/stupid-buddy || true
+          cat "$STUPID_BUDDY_LOG"
+          for want in 'HELPERS files,writer,web,system' 'RUN wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 0.40' 'RUN gsettings set org.gnome.desktop.interface color-scheme prefer-dark' 'TIMER Stretch!' 'DONE'; do
+            grep -qF "$want" "$STUPID_BUDDY_LOG" || { echo "Missing: $want"; exit 1; }
+          done
+          unset STUPID_BUDDY_SYSTEMTEST
+          cat > "$RUNNER_TEMP/summon.sh" <<'EOS'
+          export XDG_RUNTIME_DIR=$(mktemp -d)
+          windows/target/release/stupid-buddy --background & sleep 8
+          timeout 5 windows/target/release/stupid-buddy --summon || { echo "--summon didn't hand over"; exit 1; }
+          sleep 1; n=$(pgrep -cx stupid-buddy); kill %1; [ "$n" = 1 ] || { echo "$n Buddies running"; exit 1; }
+          EOS
+          timeout 60 dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" bash "$RUNNER_TEMP/summon.sh"
       - name: Attach to the release
         if: github.event_name == 'release'
         env:
