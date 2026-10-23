@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=The Stupid Buddy
+GenericName=Desktop companion
+Comment=Buddy and a small team that does work for you
+Exec=stupid-buddy
+Icon=stupid-buddy
+Terminal=false
+Categories=Utility;
+Keywords=assistant;AI;files;writer;web;
+StartupNotify=false
+StartupWMClass=stupid-buddy

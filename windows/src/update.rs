@@ -2,7 +2,8 @@
 // Check for updates). When there's a newer Buddy it asks you first, then downloads
 // StupidBuddy-<version>-windows-setup.exe and runs it only if its Ed25519 signature (the .sig next to it, made
 // with scripts/sign-update.mjs) checks out against the public key built in here. The installer runs quietly and
-// starts Buddy again.
+// starts Buddy again. On Linux the system's package manager (Stupid OS's updater, or apt) updates Buddy, so
+// nothing is ever downloaded here.
 use crate::{store, sys};
 use base64::Engine;
 use serde_json::{json, Value};
@@ -53,6 +54,9 @@ pub enum Outcome { Install(std::path::PathBuf), Message(String), Quiet }
 /// Runs on a worker thread. manual: from Settings (always checks, and says when there's nothing new).
 /// current: the version to compare with (VERSION, or an old one in the self-test).
 pub fn check(manual: bool, current: &str, dry_run: bool) -> Outcome {
+    if cfg!(not(windows)) && !dry_run {
+        return if manual { Outcome::Message(format!("You have Buddy {current}. Updates come with your system’s software updates.")) } else { Outcome::Quiet };
+    }
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     if !manual && now.saturating_sub(store::get("lastUpdateCheck").and_then(|v| v.as_u64()).unwrap_or(0)) < 12 * 3600 { return Outcome::Quiet; }
     store::set("lastUpdateCheck", json!(now));

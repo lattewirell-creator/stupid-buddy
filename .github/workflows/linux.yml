@@ -1,0 +1,47 @@
+# Builds and tests The Stupid Buddy for Linux on GitHub's Ubuntu machines, runs its self-test on a virtual screen,
+# and makes StupidBuddy-<version>-linux-amd64.deb. When a release is published the package is attached to it
+# (Stupid OS's updater finds it there by the -linux-amd64.deb ending); otherwise it's kept as a build artifact.
+name: Linux
+on:
+  push:
+    paths: ["windows/**", "ui/**", "linux/**", ".github/workflows/linux.yml"]
+  release:
+    types: [published]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libdbus-1-dev pkg-config imagemagick xvfb dbus-x11
+          rustup update stable && rustup default stable
+          cargo install cargo-deb --locked
+      - name: Test
+        working-directory: windows
+        run: cargo test --release
+      - name: Package
+        run: bash linux/build.sh
+      - name: Self-test
+        run: |
+          # The app tries its tools (files, keys, Hands Buddy saying it isn't on Linux, the window) and logs each result.
+          export STUPID_BUDDY_SELFTEST=1 STUPID_BUDDY_LOG="$RUNNER_TEMP/buddy.log" STUPID_BUDDY_DATA="$RUNNER_TEMP/buddy-data"
+          mkdir -p ~/Desktop ~/Documents ~/Downloads
+          timeout 120 dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" windows/target/release/stupid-buddy || true
+          cat "$STUPID_BUDDY_LOG"
+          for want in 'DEVICE PC' 'OK files.roots' 'OK files.write' 'OK files.read' 'FAIL hands.start Hands Buddy isn’t on Linux yet' 'OK window' 'DONE'; do
+            grep -qF "$want" "$STUPID_BUDDY_LOG" || { echo "Missing: $want"; exit 1; }
+          done
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*-linux-amd64.deb --clobber
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: dist/*-linux-amd64.deb

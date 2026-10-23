@@ -1,7 +1,7 @@
-// The Stupid Buddy for Windows: the same Buddy and team as the Mac app (ui/, built into this program) in Windows'
-// own web engine (WebView2), with the Mac app's native side ported to Rust: files and the web (tools.rs), the AI
-// connection (cloud.rs), throwing the ball (physics.rs), Hands Buddy (hands.rs), settings and keys (store.rs),
-// updates (update.rs).
+// The Stupid Buddy for Windows and Linux: the same Buddy and team as the Mac app (ui/, built into this program) in
+// the system's own web engine (WebView2 on Windows, WebKitGTK on Linux), with the Mac app's native side ported to
+// Rust: files and the web (tools.rs), the AI connection (cloud.rs), throwing the ball (physics.rs), Hands Buddy
+// (hands.rs, Windows only for now), settings and keys (store.rs), updates (update.rs), system bits (sys.rs).
 // The page talks to it exactly as on the Mac: window.webkit.messageHandlers.buddy.postMessage({id, op, …}).
 #![cfg_attr(windows, windows_subsystem = "windows")]
 mod cloud;
@@ -39,9 +39,12 @@ pub struct App {
     hands: hands::State,
     banner: Option<(Window, WebView)>,
     want_banner: bool,
+    last_cursor: Option<(i32, i32)>,
     exit: bool,
 }
 
+/// What the page calls this system (ui/ai.js).
+const PLATFORM: &str = if cfg!(windows) { "windows" } else { "linux" };
 /// wry serves the page as http://buddy.localhost on Windows (buddy://localhost elsewhere).
 fn origin() -> &'static str { if cfg!(windows) { "http://buddy.localhost" } else { "buddy://localhost" } }
 fn mime(path: &str) -> &'static str {
@@ -65,7 +68,6 @@ impl App {
         let p = self.proxy.clone();
         std::thread::spawn(move || { let r = f(); let _ = p.send_event(Ev::Run(Box::new(move |app| app.reply(id, r)))); });
     }
-    fn hwnd(&self) -> isize { sys::hwnd(&self.window) }
     /// Runs the verified installer quietly (it starts Buddy again when it's done) and quits.
     fn install(&mut self, path: std::path::PathBuf) {
         if std::process::Command::new(&path).arg("/S").spawn().is_ok() { self.exit = true; }
@@ -79,7 +81,7 @@ impl App {
     fn mode(&mut self, open: bool) -> Value {
         if open { self.stop_flying(); }
         let scale = self.window.scale_factor();
-        let (l, t, r, b) = sys::work_area(self.hwnd());
+        let (l, t, r, b) = sys::work_area(&self.window);
         let ((x, y), (w, h)) = (self.pos(), self.size());
         let (lw, lh) = if open { OPEN } else { BALL };
         let (nw, nh) = ((lw * scale).round() as i32, (lh * scale).round() as i32);
@@ -90,7 +92,7 @@ impl App {
         let m = (8.0 * scale) as i32;
         let nx = nx.clamp(l + m, (r - nw - m).max(l + m));
         let ny = ny.clamp(t + m, (b - nh - m).max(t + m));
-        if !sys::set_frame(self.hwnd(), nx, ny, nw, nh) {
+        if !sys::set_frame(&self.window, nx, ny, nw, nh) {
             self.window.set_inner_size(LogicalSize::new(lw, lh));
             self.window.set_outer_position(PhysicalPosition::new(nx, ny));
         }
@@ -109,7 +111,7 @@ impl App {
     }
     fn tick(&mut self) {
         if !self.physics.flying { return; }
-        let s = self.physics.tick(self.pos(), self.size(), sys::work_area(self.hwnd()), self.window.scale_factor());
+        let s = self.physics.tick(self.pos(), self.size(), sys::work_area(&self.window), self.window.scale_factor());
         self.window.set_outer_position(PhysicalPosition::new(s.x, s.y));
         self.emit("roll", json!({ "vx": s.vx, "hit": s.hit, "floor": s.floor }));
         if s.landed {
@@ -120,12 +122,25 @@ impl App {
         }
     }
 
+    /// The 3D Buddy looks at the cursor anywhere on the screen (and spins when you circle it): while Buddy is the
+    /// closed ball, the cursor's position from Buddy's middle goes to the page whenever it moves (ui/ball3d.js).
+    fn follow_cursor(&mut self) {
+        let now = sys::cursor(&self.window);
+        if now.is_none() || now == self.last_cursor { return; }
+        self.last_cursor = now;
+        let (cx, cy) = now.unwrap();
+        let scale = self.window.scale_factor();
+        let ((x, y), (w, h)) = (self.pos(), self.size());
+        if (w as f64 / scale - BALL.0).abs() > 1.0 { return; }   // only the closed ball
+        self.emit("cursor", json!({ "dx": (cx - (x + w / 2)) as f64 / scale, "dy": (cy - (y + h / 2)) as f64 / scale }));
+    }
+
     /// Hands Buddy may work: the red bar, clicks pass through Buddy, Buddy hides from its screenshots, Esc stops.
     fn hands_on(&mut self) {
         self.hands.active.store(true, Ordering::SeqCst);
         self.want_banner = true;
         let _ = self.window.set_ignore_cursor_events(true);
-        sys::hide_from_capture(self.hwnd(), true);
+        sys::hide_from_capture(&self.window, true);
         let (p, s) = (self.proxy.clone(), self.hands.clone());
         std::thread::spawn(move || {
             while s.active.load(Ordering::SeqCst) {
@@ -142,22 +157,25 @@ impl App {
         self.want_banner = false;
         self.banner = None;
         let _ = self.window.set_ignore_cursor_events(false);
-        sys::hide_from_capture(self.hwnd(), false);
+        sys::hide_from_capture(&self.window, false);
     }
 }
 
 fn main() {
+    #[cfg(target_os = "linux")] sys::prefer_x11();
     let event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     let proxy = event_loop.create_proxy();
-    let mut wb = WindowBuilder::new().with_title("The Stupid Buddy").with_inner_size(LogicalSize::new(BALL.0, BALL.1))
-        .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_visible(false);
+    let wb = WindowBuilder::new().with_title("The Stupid Buddy").with_inner_size(LogicalSize::new(BALL.0, BALL.1))
+        .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(!cfg!(windows)).with_visible(false);
+    // (GTK pins a window that can't be resized to its content's natural size, so on Linux Buddy stays "resizable":
+    // it has no frame to grab, and main.rs sets every size itself.)
     // On the taskbar like any app (the red Hands bar below stays off it).
-    #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_undecorated_shadow(false); }
+    #[cfg(windows)] let wb = { use tao::platform::windows::WindowBuilderExtWindows; wb.with_undecorated_shadow(false) };
     let window = wb.build(&event_loop).expect("window");
 
     // Where the ball was left last time (if that's still on a screen), else the bottom-right corner.
-    let (l, t, r, b) = sys::work_area(sys::hwnd(&window));
-    let size = window.outer_size();
+    let (l, t, r, b) = sys::work_area(&window);
+    let size = LogicalSize::new(BALL.0, BALL.1).to_physical::<u32>(window.scale_factor());   // (GTK only knows after it's shown)
     let saved = store::get("ballOrigin").and_then(|v| Some((v.get(0)?.as_i64()? as i32, v.get(1)?.as_i64()? as i32)));
     let (x, y) = saved.filter(|&(x, y)| x >= l - 40 && x <= r - 40 && y >= t - 40 && y <= b - 40)
         .unwrap_or((r - size.width as i32 - (24.0 * window.scale_factor()) as i32, b - size.height as i32 - (24.0 * window.scale_factor()) as i32));
@@ -165,7 +183,7 @@ fn main() {
     window.set_visible(true);
 
     let ipc = proxy.clone();
-    let view = WebViewBuilder::new()
+    let builder = WebViewBuilder::new()
         .with_transparent(true)
         .with_background_color((0, 0, 0, 0))
         .with_custom_protocol("buddy".into(), |_id, request| {
@@ -176,18 +194,21 @@ fn main() {
                 None => Response::builder().status(404).body(Cow::Borrowed(&b"Not found"[..])).unwrap(),
             }
         })
-        .with_initialization_script("window.__platform='windows';window.webkit={messageHandlers:{buddy:{postMessage:(m)=>window.ipc.postMessage(JSON.stringify(m))}}};")
+        // The page posts to window.webkit.messageHandlers.buddy like on the Mac. WebKitGTK's own window.webkit
+        // carries wry's channel (messageHandlers.ipc), so that one is kept before window.webkit is replaced.
+        .with_initialization_script(["window.__platform='", PLATFORM, "';(()=>{const h=window.webkit&&window.webkit.messageHandlers.ipc;const post=h?(s)=>h.postMessage(s):(s)=>window.ipc.postMessage(s);",
+            "window.webkit={messageHandlers:{buddy:{postMessage:(m)=>post(JSON.stringify(m))}}};})();"].concat())
         .with_ipc_handler(move |req| {
             // Only Buddy's own page may call the app (the Mac app checks the frame the same way).
             if req.uri().to_string().starts_with(origin()) { let _ = ipc.send_event(Ev::Ipc(req.body().clone())); }
         })
         .with_navigation_handler(|url| url.starts_with(origin()))
         .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
-        .with_url(format!("{}/index.html", origin()))
-        .build(&window).expect("webview");
+        .with_url(format!("{}/index.html", origin()));
+    let view = build_view(builder, &window);
 
     let mut app = App { proxy: proxy.clone(), window, view, physics: physics::Physics::new(), ticking: Arc::new(AtomicBool::new(false)),
-        hands: hands::State::default(), banner: None, want_banner: false, exit: false };
+        hands: hands::State::default(), banner: None, want_banner: false, last_cursor: None, exit: false };
     self_tests(&app);
     // Updates: a first check shortly after start, then every 12 hours (update.rs skips it if it checked recently).
     if cfg!(windows) && std::env::var("STUPID_BUDDY_SELFTEST").is_err() && std::env::var("STUPID_BUDDY_SHOWCASE").is_err() {
@@ -198,25 +219,12 @@ fn main() {
             std::thread::sleep(Duration::from_secs(12 * 3600));
         });
     }
-    // The 3D Buddy looks at the cursor anywhere on the screen (and spins when you circle it): while Buddy is the
-    // closed ball, the cursor's position from Buddy's middle goes to the page whenever it moves (ui/ball3d.js).
+    // The cursor is read on the main thread (GTK wants that on Linux), 30 times a second.
     {
         let p = proxy.clone();
-        std::thread::spawn(move || {
-            let mut last = None;
-            loop {
-                std::thread::sleep(Duration::from_millis(33));
-                let now = sys::cursor();
-                if now.is_none() || now == last { continue; }
-                last = now;
-                let (cx, cy) = now.unwrap();
-                if p.send_event(Ev::Run(Box::new(move |app| {
-                    let scale = app.window.scale_factor();
-                    let ((x, y), (w, h)) = (app.pos(), app.size());
-                    if (w as f64 / scale - BALL.0).abs() > 1.0 { return; }   // only the closed ball
-                    app.emit("cursor", json!({ "dx": (cx - (x + w / 2)) as f64 / scale, "dy": (cy - (y + h / 2)) as f64 / scale }));
-                }))).is_err() { break; }
-            }
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(33));
+            if p.send_event(Ev::Run(Box::new(|app| app.follow_cursor()))).is_err() { break; }
         });
     }
 
@@ -236,21 +244,32 @@ fn main() {
 
 /// The red bar at the top of the screen while Hands Buddy works. Clicks go through it and screenshots skip it.
 fn banner(target: &EventLoopWindowTarget<Ev>) -> (Window, WebView) {
-    let mut wb = WindowBuilder::new().with_title("Buddy is using your computer").with_inner_size(LogicalSize::new(430.0, 34.0))
+    let wb = WindowBuilder::new().with_title("Buddy is using your computer").with_inner_size(LogicalSize::new(430.0, 34.0))
         .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_focused(false);
-    #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_skip_taskbar(true).with_undecorated_shadow(false); }
+    #[cfg(windows)] let wb = { use tao::platform::windows::WindowBuilderExtWindows; wb.with_skip_taskbar(true).with_undecorated_shadow(false) };
     let w = wb.build(target).expect("banner");
-    let (l, t, r, _) = sys::work_area(sys::hwnd(&w));
+    let (l, t, r, _) = sys::work_area(&w);
     let width = w.outer_size().width as i32;
     w.set_outer_position(PhysicalPosition::new((l + r) / 2 - width / 2, t + (6.0 * w.scale_factor()) as i32));
     let _ = w.set_ignore_cursor_events(true);
     // Screenshots skip the bar, except in the showcase test, where the screenshots are the point.
-    if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(sys::hwnd(&w), true); }
-    let v = WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0))
+    if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(&w, true); }
+    let v = build_view(WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0))
         .with_html(r#"<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent;overflow:hidden"><div style="height:34px;border-radius:17px;background:rgba(214,77,61,.96);color:#fff;font:600 13px 'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center">Buddy is using your computer · press Esc to stop</div>"#)
-        .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:"))
-        .build(&w).expect("banner view");
+        .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:")), &w);
     (w, v)
+}
+
+/// Puts a web view in a window: on Windows straight in, on Linux inside the window's GTK box (WebKitGTK is a widget).
+fn build_view(builder: WebViewBuilder, window: &Window) -> WebView {
+    #[cfg(target_os = "linux")]
+    {
+        use tao::platform::unix::WindowExtUnix;
+        use wry::WebViewBuilderExtUnix;
+        builder.build_gtk(window.default_vbox().expect("GTK box")).expect("webview")
+    }
+    #[cfg(not(target_os = "linux"))]
+    { builder.build(window).expect("webview") }
 }
 
 fn handle(app: &mut App, body: &str) {
@@ -288,6 +307,7 @@ fn handle(app: &mut App, body: &str) {
             });
         }
         "update.version" => app.reply(id, Ok(json!(update::VERSION))),
+        op if op.starts_with("hands.") && !hands::AVAILABLE => app.reply(id, Err(hands::UNAVAILABLE.into())),
         "hands.permissions" | "hands.askPermissions" => app.reply(id, Ok(json!({ "screen": true, "control": true }))),
         "hands.start" => {
             let task = m.get("task").and_then(Value::as_str).unwrap_or("this task").to_string();

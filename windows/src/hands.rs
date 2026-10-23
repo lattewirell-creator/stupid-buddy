@@ -2,6 +2,8 @@
 // main.rs asks you first for each task, shows the red bar and stops on Esc; here: the screenshot (Buddy's own
 // windows left out), the clicks and keys, and two safety checks. It never types into a password field, and a
 // click on something like Send, Buy or Delete needs your OK in a Windows alert. Runs on worker threads.
+// Not on Linux yet: Wayland (GNOME's default) lets no app look at the screen or click and type for you without
+// asking through its portals each time, so main.rs answers every hands.* call with UNAVAILABLE there.
 use crate::sys;
 use serde_json::{json, Map, Value};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -15,6 +17,8 @@ pub struct State {
     /// Until when (ms since 1970) an Esc we pressed ourselves isn't you stopping Buddy.
     pub own_esc_until: Arc<AtomicU64>,
 }
+pub const AVAILABLE: bool = cfg!(windows);
+pub const UNAVAILABLE: &str = "Hands Buddy isn’t on Linux yet: your desktop keeps other apps’ screens and keyboards private. The other helpers can still do a lot!";
 pub fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
 
 const RISKY: &str = r"(?i)\b(send|buy|pay|purchase|order|checkout|delete|remove|erase|trash|submit|post|publish|transfer|confirm|sign out|log out|uninstall)\b";
@@ -200,8 +204,7 @@ mod imp {
 
 #[cfg(not(windows))]
 mod imp {
-    const NO: &str = "Hands Buddy in this build only works on Windows.";
-    pub fn shot() -> Result<(String, u32, u32, f64, i32, i32), String> { Err(NO.into()) }
+    pub fn shot() -> Result<(String, u32, u32, f64, i32, i32), String> { Err(super::UNAVAILABLE.into()) }
     pub fn click(_x: i32, _y: i32, _right: bool, _times: u32) {}
     pub fn scroll(_x: i32, _y: i32, _lines: i32) {}
     pub fn type_text(_text: &str) {}

@@ -141,8 +141,9 @@ function greet() {
   log.replaceChildren();
   const L = Look.get();
   say('bot', `Hi${L.call ? ' ' + L.call : ''}! I’m **${L.name}**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you` +
-    (HELPERS.hands ? '\n- **Hands Buddy** uses your other apps (it asks first, and Esc stops it)' : '') + `\nTell me what you need. I’ll always ask before moving or deleting anything.`);
-  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : `Find the best free note apps for ${window.__platform === 'windows' ? 'Windows' : 'Mac'}`, 'Write a short thank-you email']);
+    (HELPERS.hands ? '\n- **Hands Buddy** uses your other apps (it asks first, and Esc stops it)' : '') +
+    (AWAY.hands ? '\n- **Hands Buddy** is on Mac and Windows only for now (Linux keeps other apps private)' : '') + `\nTell me what you need. I’ll always ask before moving or deleting anything.`);
+  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : `Find the best free note apps for ${{ windows: 'Windows', linux: 'Linux' }[window.__platform] || 'Mac'}`, 'Write a short thank-you email']);
 }
 function chips(list) {
   const box = $('chips'); box.replaceChildren();
@@ -239,7 +240,7 @@ async function showSettings() {
   const s = await AI.status();
   const pName = AI.PROVIDERS[AI.provider()].name;
   $('ollamaState').textContent = s.provider !== 'ollama'
-    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept ${DEVICE === 'Mac' ? 'in your Mac’s Keychain' : 'safely on this ' + DEVICE}.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
+    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept ${DEVICE === 'Mac' ? 'in your Mac’s Keychain' : window.__platform === 'linux' ? 'in your system’s keyring' : 'safely on this ' + DEVICE}.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
     : s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this ${DEVICE}.` : 'Ollama is running, but no AI model is downloaded yet. In a terminal: ollama pull ' + AI.DEFAULT_MODEL)
     : 'Ollama isn’t running. Install it from ollama.com (free), open it, then come back.';
   const names = s.models.map((m) => m.name);
@@ -262,6 +263,7 @@ async function showSettings() {
   renderRoots(await Native.call('files.roots').catch(() => []));
   const team = $('teamList'); team.replaceChildren();
   for (const h of Object.values(HELPERS)) { const r = el('div', 'row'); r.appendChild(ballEl(h.color)); const g = el('div', 'grow'); g.append(el('div', null, h.name), el('small', null, 'Can: ' + h.job)); r.appendChild(g); team.appendChild(r); }
+  for (const h of Object.values(AWAY)) { const r = el('div', 'row away'); r.appendChild(ballEl(h.color)); const g = el('div', 'grow'); g.append(el('div', null, h.name + ' · unavailable'), el('small', null, h.why)); r.appendChild(g); team.appendChild(r); }
 }
 function renderRoots(list) { $('roots').textContent = list.join(' · '); }
 // Windows: Buddy updates itself (windows/src/update.rs); here you can also check by hand.
@@ -274,6 +276,11 @@ if (window.__platform === 'windows') {
     try { note.textContent = (await Native.call('update.check')) || 'You have the newest Buddy.'; } catch (e) { note.textContent = e.message; }
     btn.disabled = false;
   });
+}
+// Linux: the system's software updates bring new versions (windows/src/update.rs says so too).
+if (window.__platform === 'linux') {
+  const note = $('updateNote');
+  Native.call('update.version').then((v) => { note.classList.remove('hidden'); note.textContent = `You have Buddy ${v}. Updates come with your system’s software updates.`; }).catch(() => {});
 }
 $('addRoot').addEventListener('click', async () => renderRoots(await Native.call('files.addRoot').catch(() => [])));
 function hideSettings() { $('settings').classList.add('hidden'); $('log').classList.remove('hidden'); $('ask').classList.remove('hidden'); $('chips').classList.remove('hidden'); }

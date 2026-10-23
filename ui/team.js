@@ -1,6 +1,6 @@
 /* The Stupid Buddy: the team. Buddy (the lead) talks with you and hands work to helpers, each with its own
  * job, tools and colour. A helper works in small steps (look, read, move…) until its part is done, then Buddy
- * puts the results together. Anything risky is confirmed by you in a system alert (Tools.swift on Mac, windows/src/tools.rs on Windows). */
+ * puts the results together. Anything risky is confirmed by you in a system alert (Tools.swift on Mac, windows/src/tools.rs on Windows and Linux). */
 'use strict';
 
 /* ---------------- the app side (Mac, Windows or Android) ---------------- */
@@ -67,6 +67,10 @@ const HELPERS = {
     rules: 'You see a screenshot after each action. Spots are given as x and y on a 0–1000 grid over the screenshot (0,0 is the top-left corner, 1000,1000 the bottom-right). Do one or two actions at a time, then check the new screenshot. To start, open the app you need with open_app. Always say in “what” what you click. Never type passwords, card numbers or codes; if a password is needed, stop and ask the user to type it. Don’t send, buy, post or delete anything the user didn’t clearly ask for. If you are stuck after a few tries, stop and say what you saw.' },
 };
 if (window.__platform === 'android') delete HELPERS.hands;   // a phone can't lend Buddy its hands
+// Linux: not yet (Wayland keeps other apps' screens and keyboards private). The team leaves Hands Buddy out, and
+// the greeting and Settings say why.
+const AWAY = {};
+if (window.__platform === 'linux') { AWAY.hands = Object.assign({}, HELPERS.hands, { why: 'Not on Linux yet: your desktop keeps other apps’ screens and keyboards private. It works on Mac and Windows.' }); delete HELPERS.hands; }
 
 /* ---------------- running a helper ---------------- */
 async function context() {

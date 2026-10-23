@@ -1,8 +1,8 @@
 /* The Stupid Buddy: talking to the AI. Today that's Ollama on this Mac (free, nothing leaves the computer).
  * chat() sends a conversation (and the tools a helper may use) and returns the AI's next message. */
 'use strict';
-// What to call this computer in the interface: Mac, PC (Windows) or phone (Android).
-window.DEVICE = window.__platform === 'windows' ? 'PC' : window.__platform === 'android' ? 'phone' : 'Mac';
+// What to call this computer in the interface: Mac, PC (Windows and Linux) or phone (Android).
+window.DEVICE = window.__platform === 'windows' || window.__platform === 'linux' ? 'PC' : window.__platform === 'android' ? 'phone' : 'Mac';
 const AI = (() => {
   const BASE = 'http://localhost:11434';
   const DEFAULT_MODEL = 'qwen3-vl:8b-instruct';
@@ -14,7 +14,8 @@ const AI = (() => {
     groq: { name: 'Groq', free: 'Free key, very fast', keyUrl: 'https://console.groq.com/keys', model: 'llama-3.3-70b-versatile', vision: 'meta-llama/llama-4-scout-17b-16e-instruct' },
     openrouter: { name: 'OpenRouter', free: 'Free key, pick a model marked “free”', keyUrl: 'https://openrouter.ai/keys', model: 'meta-llama/llama-3.3-70b-instruct:free' },
   };
-  const onPhone = window.__platform === 'android', onWindows = window.__platform === 'windows';
+  // On Windows and Linux the page's address isn't one Ollama accepts, so its requests go through the app.
+  const onPhone = window.__platform === 'android', viaApp = window.__platform === 'windows' || window.__platform === 'linux';
   if (onPhone) delete PROVIDERS.ollama;   // no Ollama on a phone: an online AI with a free key
   const provider = () => { const p = localStorage.getItem('provider'); return PROVIDERS[p] ? p : onPhone ? 'groq' : 'ollama'; };
 
@@ -31,9 +32,9 @@ const AI = (() => {
       } catch { return { running: false, models: [], provider: p }; }
     }
     try {
-      const d = onWindows ? JSON.parse((await Native.call('ollama.request', { path: 'api/tags' })).body) : await (await fetch(BASE + '/api/tags', { signal: AbortSignal.timeout(3000) })).json();
+      const d = viaApp ? JSON.parse((await Native.call('ollama.request', { path: 'api/tags' })).body) : await (await fetch(BASE + '/api/tags', { signal: AbortSignal.timeout(3000) })).json();
       return { running: true, models: (d.models || []).map((m) => ({ name: m.name, size: m.size })), provider: 'ollama' };
-    } catch { return { running: false, models: [] }; }
+    } catch { return { running: false, models: [], provider: 'ollama' }; }
   }
   /** Stops whatever the team is waiting for. */
   function stop() { if (controller) controller.abort(); }

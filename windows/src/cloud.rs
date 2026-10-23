@@ -1,6 +1,6 @@
 // Buddy's brain (mac/Sources/Cloud.swift): online AIs with free keys (Gemini, Groq, OpenRouter), the key added
-// here so the page never sees it, and Ollama on this PC. On Windows the page's address isn't one Ollama
-// accepts, so its requests come through here too. Returns { status, body } like the Mac app.
+// here so the page never sees it, and Ollama on this PC. On Windows and Linux the page's address isn't one
+// Ollama accepts, so its requests come through here too. Returns { status, body } like the Mac app.
 use crate::store;
 use serde_json::{json, Map, Value};
 use std::time::Duration;
@@ -24,7 +24,7 @@ pub fn handle(op: &str, m: &Map<String, Value>) -> Result<Value, String> {
             if base(provider).is_none() || provider == "local" || key.len() < 10 || key.len() > 300 || key.chars().any(char::is_whitespace) {
                 return Err("That doesn’t look like a key.".into());
             }
-            Ok(json!(store::save_key(provider, &key)))
+            store::save_key(provider, &key).map(|_| json!(true))
         }
         "keys.has" => Ok(json!(store::load_key(provider).is_some())),
         "keys.remove" => Ok(json!(store::remove_key(provider))),
