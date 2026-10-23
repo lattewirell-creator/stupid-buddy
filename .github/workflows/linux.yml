@@ -8,6 +8,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Attach the package to this existing release (e.g. a release made from Actions, which doesn't start this workflow)"
+        required: false
+        default: ""
 permissions:
   contents: write
 jobs:
@@ -15,6 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with: { ref: "${{ inputs.tag || github.ref }}" }
       - name: Tools
         run: |
           sudo apt-get update
@@ -54,10 +60,10 @@ jobs:
           EOS
           timeout 60 dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" bash "$RUNNER_TEMP/summon.sh"
       - name: Attach to the release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/*-linux-amd64.deb --clobber
+        run: gh release upload "${{ github.event.release.tag_name || inputs.tag }}" dist/*-linux-amd64.deb --clobber
       - uses: actions/upload-artifact@v4
         with:
           name: linux-deb
