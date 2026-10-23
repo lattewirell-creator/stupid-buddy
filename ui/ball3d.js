@@ -30,7 +30,8 @@ const Ball3D = (() => {
     b3.setLook({ shape: L.shape, color: Look.color(), hat, glasses: 'none' });
     // Room for everything inside the window: a hat needs space above, and hard bumps squash Buddy wider.
     const fit = el.id === 'ball' ? FIT : 1;   // the Settings preview has no extra room around it
-    if (hat !== 'none') b3.setFraming(1.62 * fit, 0.5); else b3.setFraming(2 * fit, 0.1);
+    // An emoji hat (sun hat, flower, bow…) sits on top as a picture: it needs the same room above as a 3D one.
+    if (L.hat !== 'none') b3.setFraming(1.62 * fit, 0.5); else b3.setFraming(2 * fit, 0.1);
     el.classList.toggle('b3d-hat', hat !== 'none');   // the 3D Buddy wears it; hide the emoji one
   }
   /** Buddy's mood from app.js (happy, think, work, sleepy…). */

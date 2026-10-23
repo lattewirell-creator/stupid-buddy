@@ -181,6 +181,7 @@ html.android .chip { height: 34px; font-size: 14px; }
 .ball.b3d > i, .ball.b3d > .mouth, .ball.b3d.b3d-hat > .hat { display: none !important; }
 .ball.b3d > canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; pointer-events: none; }
 #ball.b3d, #ball.b3d.has-hat { left: 0; top: 0; width: 120px; height: 120px; }
+#ball.b3d .hat { top: 22px; font-size: 28px; }   /* an emoji hat on the 3D Buddy: inside the window, on his head */
 .look-preview.b3d { width: 96px; height: 96px; margin: -12px; }
 
 /* Opening and closing (app.js): the panel grows out of the ball and shrinks back into it */
