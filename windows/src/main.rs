@@ -35,6 +35,8 @@ static WEB: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/..
 // The closed window has room around Buddy's ball: picked up he throws his arms up, and landing squashes him wider.
 const BALL: (f64, f64) = (120.0, 120.0);
 const OPEN: (f64, f64) = (440.0, 660.0);
+/// Buddy saying something (ui/speech.js): the ball in its corner with a speech bubble beside it.
+const BUBBLE: (f64, f64) = (340.0, 210.0);
 
 /// Work handed back to the main thread.
 pub enum Ev { Ipc(String), Run(Box<dyn FnOnce(&mut App) + Send>), Tick }
@@ -90,12 +92,14 @@ impl App {
 
     /// "ball" (just Buddy) or "open" (the team panel), growing from the ball's corner of the screen. The size changes at
     /// once (the page animates the panel); returns where Buddy's ball is inside the new window, in page coordinates.
-    fn mode(&mut self, open: bool) -> Value {
+    fn mode(&mut self, kind: &str) -> Value {
+        let open = kind == "open";
+        if kind == "bubble" { self.stop_flying(); }
         if open { self.stop_flying(); }
         let scale = self.window.scale_factor();
         let (l, t, r, b) = sys::work_area(&self.window);
         let ((x, y), (w, h)) = (self.pos(), self.size());
-        let (lw, lh) = if open { OPEN } else { BALL };
+        let (lw, lh) = match kind { "open" => OPEN, "bubble" => BUBBLE, _ => BALL };
         let (nw, nh) = ((lw * scale).round() as i32, (lh * scale).round() as i32);
         let right = x + w / 2 > (l + r) / 2;
         let bottom = y + h / 2 > (t + b) / 2;
@@ -268,7 +272,11 @@ fn main() {
         let p = proxy.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(30));
-            if let update::Outcome::Install(path) = update::check(false, update::VERSION, false) { let _ = p.send_event(Ev::Run(Box::new(move |app| app.install(path)))); }
+            match update::check(false, update::VERSION, false) {
+                update::Outcome::Install(path) => { let _ = p.send_event(Ev::Run(Box::new(move |app| app.install(path)))); }
+                update::Outcome::Available(v) => { let _ = p.send_event(Ev::Run(Box::new(move |app| app.emit("update:available", json!(v))))); }
+                _ => {}
+            }
             std::thread::sleep(Duration::from_secs(12 * 3600));
         });
     }
@@ -335,7 +343,7 @@ fn handle(app: &mut App, body: &str) {
     let op = m.get("op").and_then(Value::as_str).unwrap_or("").to_string();
     let f = |k: &str| m.get(k).and_then(Value::as_f64).unwrap_or(0.0);
     match op.as_str() {
-        "window" => { let at = app.mode(m.get("mode").and_then(Value::as_str) == Some("open")); app.reply(id, Ok(at)) }
+        "window" => { let at = app.mode(m.get("mode").and_then(Value::as_str).unwrap_or("ball")); app.reply(id, Ok(at)) }
         "drag" => {
             app.stop_flying();
             let scale = app.window.scale_factor();
@@ -359,10 +367,23 @@ fn handle(app: &mut App, body: &str) {
                 let _ = p.send_event(Ev::Run(Box::new(move |app| match outcome {
                     update::Outcome::Install(path) => { app.reply(id, Ok(json!("Installing the update…"))); app.install(path); }
                     update::Outcome::Message(m) => app.reply(id, Ok(json!(m))),
-                    update::Outcome::Quiet => app.reply(id, Ok(json!(""))),
+                    update::Outcome::Quiet | update::Outcome::Available(_) => app.reply(id, Ok(json!(""))),
                 })));
             });
         }
+        // From Buddy's speech bubble: Update now (you said yes there) or In 3 days.
+        "update.install" => {
+            let p = app.proxy.clone();
+            std::thread::spawn(move || {
+                let outcome = update::check_with(true, update::VERSION, false, true);
+                let _ = p.send_event(Ev::Run(Box::new(move |app| match outcome {
+                    update::Outcome::Install(path) => { app.reply(id, Ok(json!("Installing the update…"))); app.install(path); }
+                    update::Outcome::Message(m) => app.reply(id, Ok(json!(m))),
+                    _ => app.reply(id, Ok(json!(""))),
+                })));
+            });
+        }
+        "update.later" => { update::snooze(3); app.reply(id, Ok(json!(true))) }
         "update.version" => app.reply(id, Ok(json!(update::VERSION))),
         op if op.starts_with("hands.") && !hands::AVAILABLE => app.reply(id, Err(hands::UNAVAILABLE.into())),
         "hands.permissions" | "hands.askPermissions" => app.reply(id, Ok(json!({ "screen": true, "control": true }))),
@@ -473,7 +494,7 @@ localStorage.removeItem('look');Look.apply();await L('DONE');Native.call('quit')
         // Pretends to be an old version, finds the newest release, downloads it and checks its signature (no install).
         let p = app.proxy.clone();
         std::thread::spawn(move || {
-            let text = match update::check(true, &from, true) { update::Outcome::Message(m) => m, update::Outcome::Install(_) => "install".into(), update::Outcome::Quiet => "quiet".into() };
+            let text = match update::check(true, &from, true) { update::Outcome::Message(m) => m, update::Outcome::Install(_) => "install".into(), update::Outcome::Available(v) => format!("available {v}"), update::Outcome::Quiet => "quiet".into() };
             log(&format!("UPDATE {text}"));
             let _ = p.send_event(Ev::Run(Box::new(|app| app.exit = true)));
         });

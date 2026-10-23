@@ -46,7 +46,7 @@ async function close() {
 {
   // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
   const ball = $('ball'); let start = null, moved = false, samples = [];
-  ball.addEventListener('pointerdown', (e) => { start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); Ball3D.held(true); });
+  ball.addEventListener('pointerdown', (e) => { if (typeof Speech !== 'undefined' && Speech.active()) Speech.hush(); start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); Ball3D.held(true); });
   ball.addEventListener('pointermove', (e) => {
     if (!start) return;
     const dx = e.screenX - start.x, dy = e.screenY - start.y;
@@ -348,6 +348,10 @@ function hideSettings() { $('settings').classList.add('hidden'); $('log').classL
 $('setBtn').addEventListener('click', () => ($('settings').classList.contains('hidden') ? showSettings() : hideSettings()));
 $('setDone').addEventListener('click', hideSettings);
 $('quitBtn').addEventListener('click', () => Native.call('quit'));
+{
+  const box = $('chatterBox'); try { box.checked = localStorage.getItem('chatter') !== 'off'; } catch {}
+  box.addEventListener('change', () => { try { localStorage.setItem('chatter', box.checked ? 'on' : 'off'); } catch {} });
+}
 
 /* ---------------- start ---------------- */
 async function refreshStatus() {
@@ -368,6 +372,7 @@ async function refreshStatus() {
 }
 greet();
 refreshStatus();
+setTimeout(() => Speech.hello(), 900);   // pops up, hops and says hi (speech.js)
 // Dev self-test (see main.swift): ask, print what the team does, quit.
 window.__test = async (q, provider) => {
   const log = (t) => Native.call('log', { text: t });

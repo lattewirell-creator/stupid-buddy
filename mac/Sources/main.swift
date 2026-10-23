@@ -40,6 +40,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   lazy var hands = Hands(app: self)
   static let ballSize = NSSize(width: 120, height: 120)   // room around the ball for raised arms and squash
   static let openSize = NSSize(width: 440, height: 660)
+  static let bubbleSize = NSSize(width: 340, height: 210)   // Buddy saying something (ui/speech.js)
 
   /// Clicking Buddy's Dock icon opens the panel.
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -154,13 +155,13 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     }
   }
 
-  /// "ball" (just Buddy) or "open" (the team panel), growing from the ball's corner of the screen.
+  /// "ball" (just Buddy), "bubble" (Buddy with a speech bubble) or "open" (the team panel), growing from the ball's corner of the screen.
   /// The size changes at once (the page animates the panel itself, which is smoother than resizing the window
   /// frame by frame). Returns where Buddy's ball is inside the new window, in page coordinates.
   @discardableResult private func window(_ m: [String: Any]) -> [String: Double] {
-    let open = (m["mode"] as? String) == "open"
-    if open { physics.stop() }
-    let size = open ? App.openSize : App.ballSize
+    let mode = m["mode"] as? String ?? "ball", open = mode == "open"
+    if open || mode == "bubble" { physics.stop() }
+    let size = open ? App.openSize : mode == "bubble" ? App.bubbleSize : App.ballSize
     let screen = panel.screen?.visibleFrame ?? NSScreen.main!.visibleFrame
     var f = panel.frame
     let right = f.midX > screen.midX, top = f.midY > screen.midY

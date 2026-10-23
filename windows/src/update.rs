@@ -49,11 +49,20 @@ fn download(url: &str, limit: u64) -> Option<Vec<u8>> {
 }
 
 /// What a check ended with: Install(path) means the verified installer is saved and should run now.
-pub enum Outcome { Install(std::path::PathBuf), Message(String), Quiet }
+/// Available(version): a new Buddy is out and can install itself; Buddy says so in a speech bubble (ui/speech.js).
+pub enum Outcome { Install(std::path::PathBuf), Message(String), Available(String), Quiet }
+
+/// "In 3 days": the background check stays quiet until then (Settings → Check for updates still works).
+pub fn snooze(days: u64) {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    store::set("updateSnoozedUntil", json!(now + days * 86400));
+}
 
 /// Runs on a worker thread. manual: from Settings (always checks, and says when there's nothing new).
 /// current: the version to compare with (VERSION, or an old one in the self-test).
-pub fn check(manual: bool, current: &str, dry_run: bool) -> Outcome {
+pub fn check(manual: bool, current: &str, dry_run: bool) -> Outcome { check_with(manual, current, dry_run, false) }
+/// confirmed: you already said yes (Update now in Buddy's speech bubble), so no second question.
+pub fn check_with(manual: bool, current: &str, dry_run: bool, confirmed: bool) -> Outcome {
     if cfg!(not(windows)) && !dry_run {
         return if manual { Outcome::Message(format!("You have Buddy {current}. Updates come with your system’s software updates.")) } else { Outcome::Quiet };
     }
@@ -65,7 +74,12 @@ pub fn check(manual: bool, current: &str, dry_run: bool) -> Outcome {
     // Releases before 0.8.0 weren't signed: those can't install themselves.
     let Some(sig_url) = f.sig.clone() else { return if manual { Outcome::Message(format!("Buddy {} is out, but it can’t install itself. Download it from github.com/{REPO}/releases.", f.version)) } else { Outcome::Quiet } };
     if !dry_run && (store::get("skipVersion").and_then(|v| v.as_str().map(String::from)).as_deref() == Some(f.version.as_str()) && !manual) { return Outcome::Quiet; }
-    if !dry_run && !sys::confirm("Update The Stupid Buddy?", &format!("Buddy {} is out (you have {current}). It downloads now, installs by itself and Buddy starts again in a few seconds. Your settings and keys stay on this PC.", f.version), "Update now") {
+    // In the background Buddy doesn't pop up a Windows alert: he says it himself, and you pick Update now or In 3 days.
+    if !manual && !dry_run {
+        if store::get("updateSnoozedUntil").and_then(|v| v.as_u64()).unwrap_or(0) > now { return Outcome::Quiet; }
+        return Outcome::Available(f.version);
+    }
+    if !dry_run && !confirmed && !sys::confirm("Update The Stupid Buddy?", &format!("Buddy {} is out (you have {current}). It downloads now, installs by itself and Buddy starts again in a few seconds. Your settings and keys stay on this PC.", f.version), "Update now") {
         store::set("skipVersion", json!(f.version));   // don't ask again for this version (Settings → Check for updates still can)
         return Outcome::Message("Okay, not now.".into());
     }
