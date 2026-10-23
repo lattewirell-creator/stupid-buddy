@@ -48,6 +48,10 @@ Section "Install"
     Exec '"$INSTDIR\The Stupid Buddy.exe"'
   CreateShortcut "$SMPROGRAMS\The Stupid Buddy.lnk" "$INSTDIR\The Stupid Buddy.exe"
   !define UNINST "Software\Microsoft\Windows\CurrentVersion\Uninstall\TheStupidBuddy"
+  ; A desktop shortcut on the first install only: an update doesn't bring it back if you deleted it.
+  ReadRegStr $1 HKCU "${UNINST}" "DisplayName"
+  StrCmp $1 "" 0 +2
+    CreateShortcut "$DESKTOP\The Stupid Buddy.lnk" "$INSTDIR\The Stupid Buddy.exe"
   WriteRegStr HKCU "${UNINST}" "DisplayName" "The Stupid Buddy"
   WriteRegStr HKCU "${UNINST}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "${UNINST}" "Publisher" "lattewirell-creator"
@@ -63,5 +67,6 @@ Section "Uninstall"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\The Stupid Buddy.lnk"
+  Delete "$DESKTOP\The Stupid Buddy.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\TheStupidBuddy"
 SectionEnd
