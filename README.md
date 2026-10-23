@@ -42,4 +42,6 @@ For This Mac: install Ollama, then `ollama pull qwen3-vl:8b-instruct` (6 GB). On
 
 Mac: `bash mac/build.sh` → `mac/build/The Stupid Buddy.app`. Android: `cd android && ./gradlew assembleRelease`. Both share `ui/` (plain HTML/JS: the team and the AI); the Mac side is Swift, the phone side Java.
 
+Routing test: `node scripts/route-test.mjs` asks Buddy 13 typical things (in English and Swedish) and checks it hands each one to the right helper, without the helpers touching anything. It uses Ollama on this computer; `--model <name>` tries another model, and `GROQ_API_KEY=… node scripts/route-test.mjs --provider groq` (or gemini, openrouter) an online one.
+
 Free and open source under the MIT license.
