@@ -176,15 +176,19 @@ const ERRORS = { offline: 'I can’t reach my brain. Is Ollama running (or the i
 async function ask(text) {
   text = String(text ?? $('input').value).trim();
   if (!text || busy) return;
-  // You come first: an agent working in the background steps aside (it stops after its current step and tries again later).
-  if (typeof Agents !== 'undefined' && Agents.running()) { status('Pausing an agent…'); await Promise.race([Agents.yield(), new Promise((r) => setTimeout(r, 8000))]); }
   $('input').value = ''; grow(); $('chips').replaceChildren();
   say('me', text);
   const controller = new AbortController(); busy = controller;
   document.body.classList.add('busy'); face('think'); status('Thinking…'); sendButton(true);
+  if (typeof Agents !== 'undefined') Agents.refresh();
   const area = workArea();
   const thinking = say('bot', ''); thinking.classList.add('typing');
   try {
+    // You come first: an agent working in the background steps aside (it stops after its current step and tries again
+    // later). Wait for it to really stop, so it can't touch anything this turn starts.
+    if (typeof Agents !== 'undefined' && Agents.running()) { status('Pausing an agent…'); await Promise.race([Agents.yield(), new Promise((r) => setTimeout(r, 8000))]); }
+    if (controller.signal.aborted) throw new Error('stopped');
+    status('Thinking…');
     const answer = await Team.ask(text, area, { models, name: Look.name(), persona: Look.persona(), signal: controller.signal });
     thinking.classList.remove('typing'); thinking.innerHTML = md(answer);
     face('happy'); setTimeout(() => face(''), 1600);

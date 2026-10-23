@@ -59,10 +59,10 @@ fn watch(on: &AtomicBool) -> Vec<Value> {
         // Typing: any key other than the mouse buttons and the modifiers on their own.
         let keyed = (0x08..0xFF).filter(|vk| !matches!(vk, 0x10..=0x12 | 0x14 | 0x1B | 0x5B | 0x5C | 0xA0..=0xA5)).any(hands::key_hit);
         if keyed {
-            let password = hands::focused_is_password();
             match typing.as_mut() {
-                Some(b) => { b.last = Instant::now(); b.password |= password; }
-                None => typing = Some(Burst { last: Instant::now(), password, what: imp::focused_name(), window: imp::window_title() }),
+                // Asking Windows about the focused field is heavy, so while typing it's checked at most every 150 ms.
+                Some(b) => { b.last = Instant::now(); if b.checked.elapsed() > Duration::from_millis(150) { b.password |= hands::focused_is_password(); b.checked = Instant::now(); } }
+                None => typing = Some(Burst { last: Instant::now(), checked: Instant::now(), password: hands::focused_is_password(), what: imp::focused_name(), window: imp::window_title() }),
             }
         } else if typing.as_ref().map(|b| b.last.elapsed() > Duration::from_millis(1200)).unwrap_or(false) {
             steps.push(typed(at, typing.take().unwrap()));
@@ -74,7 +74,7 @@ fn watch(on: &AtomicBool) -> Vec<Value> {
     steps
 }
 
-struct Burst { last: Instant, password: bool, what: String, window: String }
+struct Burst { last: Instant, checked: Instant, password: bool, what: String, window: String }
 
 /// A pause after typing: where it went and what the screen shows now (the field's text, unless it was a password).
 fn typed(at: u64, b: Burst) -> Value {
