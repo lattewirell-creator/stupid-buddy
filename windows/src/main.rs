@@ -1,17 +1,24 @@
-// The Stupid Buddy for Windows: the same Buddy and team as the Mac app (ui/, built into this program) in Windows'
-// own web engine (WebView2), with the Mac app's native side ported to Rust: files and the web (tools.rs), the AI
-// connection (cloud.rs), throwing the ball (physics.rs), Hands Buddy (hands.rs), settings and keys (store.rs),
-// updates (update.rs).
+// The Stupid Buddy for Windows and Linux: the same Buddy and team as the Mac app (ui/, built into this program) in
+// the system's own web engine (WebView2 on Windows, WebKitGTK on Linux), with the Mac app's native side ported to
+// Rust: files and the web (tools.rs), the AI connection (cloud.rs), throwing the ball (physics.rs), Hands Buddy
+// (hands.rs, Windows only for now), settings and keys (store.rs), updates (update.rs), system bits (sys.rs).
+// Linux also has System Buddy (system.rs), voice (voice.rs) and summoning from anywhere (instance.rs).
 // The page talks to it exactly as on the Mac: window.webkit.messageHandlers.buddy.postMessage({id, op, …}).
 #![cfg_attr(windows, windows_subsystem = "windows")]
 mod cloud;
 mod hands;
+#[cfg(target_os = "linux")]
+mod instance;
 mod physics;
 mod store;
 mod sys;
+#[cfg(target_os = "linux")]
+mod system;
 mod teach;
 mod tools;
 mod update;
+#[cfg(target_os = "linux")]
+mod voice;
 
 use serde_json::{json, Value};
 use std::borrow::Cow;
@@ -41,12 +48,15 @@ pub struct App {
     hands: hands::State,
     banner: Option<(Window, WebView)>,
     want_banner: bool,
+    last_cursor: Option<(i32, i32)>,
     /// What the bar at the top says: Hands Buddy at work, or Buddy watching you teach it a task.
     banner_text: &'static str,
     teach: teach::Recorder,
     exit: bool,
 }
 
+/// What the page calls this system (ui/ai.js).
+const PLATFORM: &str = if cfg!(windows) { "windows" } else { "linux" };
 /// wry serves the page as http://buddy.localhost on Windows (buddy://localhost elsewhere).
 fn origin() -> &'static str { if cfg!(windows) { "http://buddy.localhost" } else { "buddy://localhost" } }
 fn mime(path: &str) -> &'static str {
@@ -70,7 +80,6 @@ impl App {
         let p = self.proxy.clone();
         std::thread::spawn(move || { let r = f(); let _ = p.send_event(Ev::Run(Box::new(move |app| app.reply(id, r)))); });
     }
-    fn hwnd(&self) -> isize { sys::hwnd(&self.window) }
     /// Runs the verified installer quietly (it starts Buddy again when it's done) and quits.
     fn install(&mut self, path: std::path::PathBuf) {
         if std::process::Command::new(&path).arg("/S").spawn().is_ok() { self.exit = true; }
@@ -84,7 +93,7 @@ impl App {
     fn mode(&mut self, open: bool) -> Value {
         if open { self.stop_flying(); }
         let scale = self.window.scale_factor();
-        let (l, t, r, b) = sys::work_area(self.hwnd());
+        let (l, t, r, b) = sys::work_area(&self.window);
         let ((x, y), (w, h)) = (self.pos(), self.size());
         let (lw, lh) = if open { OPEN } else { BALL };
         let (nw, nh) = ((lw * scale).round() as i32, (lh * scale).round() as i32);
@@ -95,11 +104,11 @@ impl App {
         let m = (8.0 * scale) as i32;
         let nx = nx.clamp(l + m, (r - nw - m).max(l + m));
         let ny = ny.clamp(t + m, (b - nh - m).max(t + m));
-        if !sys::set_frame(self.hwnd(), nx, ny, nw, nh) {
+        if !sys::set_frame(&self.window, nx, ny, nw, nh) {
             self.window.set_inner_size(LogicalSize::new(lw, lh));
             self.window.set_outer_position(PhysicalPosition::new(nx, ny));
         }
-        if open { self.window.set_focus(); }
+        if open { sys::focus(&self.window, ""); }
         json!({ "x": (x + w / 2 - nx) as f64 / scale, "y": (y + h / 2 - ny) as f64 / scale })
     }
     fn save_origin(&self) { let (x, y) = self.pos(); store::set("ballOrigin", json!([x, y])); }
@@ -114,7 +123,7 @@ impl App {
     }
     fn tick(&mut self) {
         if !self.physics.flying { return; }
-        let s = self.physics.tick(self.pos(), self.size(), sys::work_area(self.hwnd()), self.window.scale_factor());
+        let s = self.physics.tick(self.pos(), self.size(), sys::work_area(&self.window), self.window.scale_factor());
         self.window.set_outer_position(PhysicalPosition::new(s.x, s.y));
         self.emit("roll", json!({ "vx": s.vx, "hit": s.hit, "floor": s.floor }));
         if s.landed {
@@ -125,13 +134,35 @@ impl App {
         }
     }
 
+    /// The 3D Buddy looks at the cursor anywhere on the screen (and spins when you circle it): while Buddy is the
+    /// closed ball, the cursor's position from Buddy's middle goes to the page whenever it moves (ui/ball3d.js).
+    fn follow_cursor(&mut self) {
+        let now = sys::cursor(&self.window);
+        if now.is_none() || now == self.last_cursor { return; }
+        self.last_cursor = now;
+        let (cx, cy) = now.unwrap();
+        let scale = self.window.scale_factor();
+        let ((x, y), (w, h)) = (self.pos(), self.size());
+        if (w as f64 / scale - BALL.0).abs() > 1.0 { return; }   // only the closed ball
+        self.emit("cursor", json!({ "dx": (cx - (x + w / 2)) as f64 / scale, "dy": (cy - (y + h / 2)) as f64 / scale }));
+    }
+
+    /// Another start of Buddy (instance.rs): "summon" opens the panel ready to type, "summon voice" ready to
+    /// listen, "show" (Buddy started again from the app grid) opens it, "background" changes nothing.
+    #[cfg(target_os = "linux")]
+    fn summon(&mut self, wish: &str, startup_id: &str) {
+        if wish == "background" { return; }
+        sys::focus(&self.window, startup_id);
+        self.emit("summon", json!({ "voice": wish == "summon voice" }));
+    }
+
     /// Hands Buddy may work: the red bar, clicks pass through Buddy, Buddy hides from its screenshots, Esc stops.
     fn hands_on(&mut self) {
         self.hands.active.store(true, Ordering::SeqCst);
         self.banner = None; self.banner_text = HANDS_BAR;
         self.want_banner = true;
         let _ = self.window.set_ignore_cursor_events(true);
-        sys::hide_from_capture(self.hwnd(), true);
+        sys::hide_from_capture(&self.window, true);
         let (p, s) = (self.proxy.clone(), self.hands.clone());
         std::thread::spawn(move || {
             while s.active.load(Ordering::SeqCst) {
@@ -152,36 +183,46 @@ impl App {
         if let Err(e) = started { return self.reply(id, Err(e)); }
         self.banner = None; self.banner_text = TEACH_BAR; self.want_banner = true;
         let _ = self.window.set_ignore_cursor_events(true);
-        sys::hide_from_capture(self.hwnd(), true);
+        sys::hide_from_capture(&self.window, true);
         self.reply(id, Ok(json!(true)));
     }
     fn teach_off(&mut self) {
         self.teach.stop();
         self.want_banner = false; self.banner = None;
         let _ = self.window.set_ignore_cursor_events(false);
-        sys::hide_from_capture(self.hwnd(), false);
+        sys::hide_from_capture(&self.window, false);
     }
     fn hands_off(&mut self) {
         self.hands.active.store(false, Ordering::SeqCst);
         self.want_banner = false;
         self.banner = None;
         let _ = self.window.set_ignore_cursor_events(false);
-        sys::hide_from_capture(self.hwnd(), false);
+        sys::hide_from_capture(&self.window, false);
     }
 }
 
 fn main() {
+    // Linux: one Buddy at a time. A second start hands its wish to the running one and quits (instance.rs).
+    #[cfg(target_os = "linux")]
+    let wish = instance::wish(&std::env::args().skip(1).collect::<Vec<_>>());
+    #[cfg(target_os = "linux")]
+    if !testing() && instance::hand_over(&wish) { return; }
+    #[cfg(not(target_os = "linux"))]
+    let wish = String::new();
+    #[cfg(target_os = "linux")] sys::prefer_x11();
     let event_loop = EventLoopBuilder::<Ev>::with_user_event().build();
     let proxy = event_loop.create_proxy();
-    let mut wb = WindowBuilder::new().with_title("The Stupid Buddy").with_inner_size(LogicalSize::new(BALL.0, BALL.1))
-        .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_visible(false);
+    let wb = WindowBuilder::new().with_title("The Stupid Buddy").with_inner_size(LogicalSize::new(BALL.0, BALL.1))
+        .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(!cfg!(windows)).with_visible(false);
+    // (GTK pins a window that can't be resized to its content's natural size, so on Linux Buddy stays "resizable":
+    // it has no frame to grab, and main.rs sets every size itself.)
     // On the taskbar like any app (the red Hands bar below stays off it).
-    #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_undecorated_shadow(false); }
+    #[cfg(windows)] let wb = { use tao::platform::windows::WindowBuilderExtWindows; wb.with_undecorated_shadow(false) };
     let window = wb.build(&event_loop).expect("window");
 
     // Where the ball was left last time (if that's still on a screen), else the bottom-right corner.
-    let (l, t, r, b) = sys::work_area(sys::hwnd(&window));
-    let size = window.outer_size();
+    let (l, t, r, b) = sys::work_area(&window);
+    let size = LogicalSize::new(BALL.0, BALL.1).to_physical::<u32>(window.scale_factor());   // (GTK only knows after it's shown)
     let saved = store::get("ballOrigin").and_then(|v| Some((v.get(0)?.as_i64()? as i32, v.get(1)?.as_i64()? as i32)));
     let (x, y) = saved.filter(|&(x, y)| x >= l - 40 && x <= r - 40 && y >= t - 40 && y <= b - 40)
         .unwrap_or((r - size.width as i32 - (24.0 * window.scale_factor()) as i32, b - size.height as i32 - (24.0 * window.scale_factor()) as i32));
@@ -189,7 +230,7 @@ fn main() {
     window.set_visible(true);
 
     let ipc = proxy.clone();
-    let view = WebViewBuilder::new()
+    let builder = WebViewBuilder::new()
         .with_transparent(true)
         .with_background_color((0, 0, 0, 0))
         .with_custom_protocol("buddy".into(), |_id, request| {
@@ -200,19 +241,28 @@ fn main() {
                 None => Response::builder().status(404).body(Cow::Borrowed(&b"Not found"[..])).unwrap(),
             }
         })
-        .with_initialization_script("window.__platform='windows';window.webkit={messageHandlers:{buddy:{postMessage:(m)=>window.ipc.postMessage(JSON.stringify(m))}}};")
+        // The page posts to window.webkit.messageHandlers.buddy like on the Mac. WebKitGTK's own window.webkit
+        // carries wry's channel (messageHandlers.ipc), so that one is kept before window.webkit is replaced.
+        // Started with --summon: the page opens itself as soon as it's there.
+        .with_initialization_script(["window.__platform='", PLATFORM, "';window.__summon='", match wish.as_str() { "summon" => "text", "summon voice" => "voice", _ => "" }, "';(()=>{const h=window.webkit&&window.webkit.messageHandlers.ipc;const post=h?(s)=>h.postMessage(s):(s)=>window.ipc.postMessage(s);",
+            "window.webkit={messageHandlers:{buddy:{postMessage:(m)=>post(JSON.stringify(m))}}};})();"].concat())
         .with_ipc_handler(move |req| {
             // Only Buddy's own page may call the app (the Mac app checks the frame the same way).
             if req.uri().to_string().starts_with(origin()) { let _ = ipc.send_event(Ev::Ipc(req.body().clone())); }
         })
         .with_navigation_handler(|url| url.starts_with(origin()))
         .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
-        .with_url(format!("{}/index.html", origin()))
-        .build(&window).expect("webview");
+        .with_url(format!("{}/index.html", origin()));
+    let view = build_view(builder, &window);
 
     let mut app = App { proxy: proxy.clone(), window, view, physics: physics::Physics::new(), ticking: Arc::new(AtomicBool::new(false)),
-        hands: hands::State::default(), banner: None, want_banner: false, banner_text: HANDS_BAR, teach: teach::Recorder::default(), exit: false };
+        hands: hands::State::default(), banner: None, want_banner: false, last_cursor: None, banner_text: HANDS_BAR, teach: teach::Recorder::default(), exit: false };
     self_tests(&app);
+    #[cfg(target_os = "linux")]
+    if !testing() {
+        let p = proxy.clone();
+        instance::listen(move |wish, id| { let _ = p.send_event(Ev::Run(Box::new(move |app| app.summon(&wish, &id)))); });
+    }
     // Updates: a first check shortly after start, then every 12 hours (update.rs skips it if it checked recently).
     if cfg!(windows) && std::env::var("STUPID_BUDDY_SELFTEST").is_err() && std::env::var("STUPID_BUDDY_SHOWCASE").is_err() {
         let p = proxy.clone();
@@ -222,25 +272,12 @@ fn main() {
             std::thread::sleep(Duration::from_secs(12 * 3600));
         });
     }
-    // The 3D Buddy looks at the cursor anywhere on the screen (and spins when you circle it): while Buddy is the
-    // closed ball, the cursor's position from Buddy's middle goes to the page whenever it moves (ui/ball3d.js).
+    // The cursor is read on the main thread (GTK wants that on Linux), 30 times a second.
     {
         let p = proxy.clone();
-        std::thread::spawn(move || {
-            let mut last = None;
-            loop {
-                std::thread::sleep(Duration::from_millis(33));
-                let now = sys::cursor();
-                if now.is_none() || now == last { continue; }
-                last = now;
-                let (cx, cy) = now.unwrap();
-                if p.send_event(Ev::Run(Box::new(move |app| {
-                    let scale = app.window.scale_factor();
-                    let ((x, y), (w, h)) = (app.pos(), app.size());
-                    if (w as f64 / scale - BALL.0).abs() > 1.0 { return; }   // only the closed ball
-                    app.emit("cursor", json!({ "dx": (cx - (x + w / 2)) as f64 / scale, "dy": (cy - (y + h / 2)) as f64 / scale }));
-                }))).is_err() { break; }
-            }
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(33));
+            if p.send_event(Ev::Run(Box::new(|app| app.follow_cursor()))).is_err() { break; }
         });
     }
 
@@ -264,21 +301,32 @@ const HANDS_BAR: &str = "<div style=\"background:rgba(214,77,61,.96)\">Buddy is 
 const TEACH_BAR: &str = "<div style=\"background:rgba(79,120,181,.96)\">Buddy is watching · do the task, then press Esc</div>";
 fn banner(target: &EventLoopWindowTarget<Ev>, text: &str) -> (Window, WebView) {
     let title = if text == TEACH_BAR { "Buddy is watching" } else { "Buddy is using your computer" };
-    let mut wb = WindowBuilder::new().with_title(title).with_inner_size(LogicalSize::new(430.0, 34.0))
+    let wb = WindowBuilder::new().with_title(title).with_inner_size(LogicalSize::new(430.0, 34.0))
         .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_focused(false);
-    #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_skip_taskbar(true).with_undecorated_shadow(false); }
+    #[cfg(windows)] let wb = { use tao::platform::windows::WindowBuilderExtWindows; wb.with_skip_taskbar(true).with_undecorated_shadow(false) };
     let w = wb.build(target).expect("banner");
-    let (l, t, r, _) = sys::work_area(sys::hwnd(&w));
+    let (l, t, r, _) = sys::work_area(&w);
     let width = w.outer_size().width as i32;
     w.set_outer_position(PhysicalPosition::new((l + r) / 2 - width / 2, t + (6.0 * w.scale_factor()) as i32));
     let _ = w.set_ignore_cursor_events(true);
     // Screenshots skip the bar, except in the showcase test, where the screenshots are the point.
-    if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(sys::hwnd(&w), true); }
-    let v = WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0))
+    if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(&w, true); }
+    let v = build_view(WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0))
         .with_html(format!(r#"<!doctype html><meta charset="utf-8"><style>div{{height:34px;border-radius:17px;color:#fff;font:600 13px 'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center}}</style><body style="margin:0;background:transparent;overflow:hidden">{text}"#))
-        .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:"))
-        .build(&w).expect("banner view");
+        .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:")), &w);
     (w, v)
+}
+
+/// Puts a web view in a window: on Windows straight in, on Linux inside the window's GTK box (WebKitGTK is a widget).
+fn build_view(builder: WebViewBuilder, window: &Window) -> WebView {
+    #[cfg(target_os = "linux")]
+    {
+        use tao::platform::unix::WindowExtUnix;
+        use wry::WebViewBuilderExtUnix;
+        builder.build_gtk(window.default_vbox().expect("GTK box")).expect("webview")
+    }
+    #[cfg(not(target_os = "linux"))]
+    { builder.build(window).expect("webview") }
 }
 
 fn handle(app: &mut App, body: &str) {
@@ -316,6 +364,7 @@ fn handle(app: &mut App, body: &str) {
             });
         }
         "update.version" => app.reply(id, Ok(json!(update::VERSION))),
+        op if op.starts_with("hands.") && !hands::AVAILABLE => app.reply(id, Err(hands::UNAVAILABLE.into())),
         "hands.permissions" | "hands.askPermissions" => app.reply(id, Ok(json!({ "screen": true, "control": true }))),
         "hands.start" => {
             if app.teach.on.load(Ordering::SeqCst) { return app.reply(id, Err("Buddy is watching you teach it a task right now.".into())); }
@@ -333,10 +382,58 @@ fn handle(app: &mut App, body: &str) {
         "teach.start" => app.teach_on(id),
         "teach.stop" => { app.teach.stop(); app.reply(id, Ok(json!(true))) }
         op if op.starts_with("hands.") => { let (s, op) = (app.hands.clone(), op.to_string()); app.work(id, move || hands::act(&op, &m, &s)) }
+        #[cfg(target_os = "linux")]
+        "voice.can" => {
+            let provider = m.get("provider").and_then(Value::as_str).unwrap_or("").to_string();
+            let speak = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).any(|d| d.join("spd-say").is_file())).unwrap_or(false);
+            app.reply(id, Ok(json!({ "listen": voice::can_listen(&provider), "speak": speak })))
+        }
+        #[cfg(target_os = "linux")]
+        "voice.listen" => {
+            let provider = m.get("provider").and_then(Value::as_str).unwrap_or("").to_string();
+            let p = app.proxy.clone();
+            app.work(id, move || voice::listen(&provider, |level| { let _ = p.send_event(Ev::Run(Box::new(move |app| app.emit("voice:level", json!(level))))); }).map(|t| json!(t)))
+        }
+        #[cfg(target_os = "linux")]
+        "voice.stop" => { voice::stop(); app.reply(id, Ok(json!(true))) }
+        #[cfg(target_os = "linux")]
+        "voice.speak" => { let text = m.get("text").and_then(Value::as_str).unwrap_or("").to_string(); app.work(id, move || voice::speak(&text)) }
+        // A timer or reminder: a desktop notification when it's time, and a note from Buddy (ui/app.js).
+        #[cfg(target_os = "linux")]
+        "system.timer" => {
+            let secs = f("seconds").round();
+            if !(1.0..=7.0 * 86_400.0).contains(&secs) { return app.reply(id, Err("A timer can be from a second to a week.".into())); }
+            let text = m.get("text").and_then(Value::as_str).unwrap_or("").trim().chars().take(200).collect::<String>();
+            let text = if text.is_empty() { "Time’s up!".to_string() } else { text };
+            let p = app.proxy.clone();
+            let said = text.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(secs as u64));
+                system::notify("The Stupid Buddy", &said);
+                let _ = p.send_event(Ev::Run(Box::new(move |app| app.emit("timer", json!(said)))));
+            });
+            app.reply(id, Ok(json!(format!("Timer set: “{text}” in {}", human(secs as u64)))))
+        }
+        #[cfg(target_os = "linux")]
+        op if op.starts_with("system.") => { let op = op.to_string(); app.work(id, move || system::handle(&op, &m)) }
+        op if op.starts_with("voice.") || op.starts_with("system.") => app.reply(id, Err("That’s only in the Linux version for now.".into())),
         op if op.starts_with("keys.") || op == "ai.request" || op == "ollama.request" => { let op = op.to_string(); app.work(id, move || cloud::handle(&op, &m)) }
         op => { let op = op.to_string(); app.work(id, move || tools::handle(&op, &m)) }
     }
 }
+
+/// "5 minutes", "1 hour 30 minutes", "45 seconds".
+#[cfg(target_os = "linux")]
+fn human(secs: u64) -> String {
+    let unit = |n: u64, one: &str| format!("{n} {one}{}", if n == 1 { "" } else { "s" });
+    let (h, m, s) = (secs / 3600, secs % 3600 / 60, secs % 60);
+    let parts: Vec<String> = [(h, "hour"), (m, "minute"), (s, "second")].iter().filter(|(n, _)| *n > 0).map(|&(n, u)| unit(n, u)).collect();
+    parts.join(" ")
+}
+
+/// Started by a development test (below): those don't take part in "one Buddy at a time".
+#[cfg(target_os = "linux")]
+fn testing() -> bool { ["STUPID_BUDDY_SELFTEST", "STUPID_BUDDY_SHOWCASE", "STUPID_BUDDY_THROW", "STUPID_BUDDY_ASK", "STUPID_BUDDY_UPDATE_DRYRUN"].iter().any(|v| std::env::var_os(v).is_some()) }
 
 /// Development self-tests: STUPID_BUDDY_SELFTEST=1 tries the app's tools and logs each result, then quits;
 /// STUPID_BUDDY_ASK="…" asks the team (like the Mac app); STUPID_BUDDY_THROW="vx,vy" throws the ball.
@@ -351,6 +448,17 @@ await T('files.read',{path:'~/Documents/Buddy self-test/hello.md'});await T('fil
 await T('web.search',{query:'the stupid company'});await T('keys.has',{provider:'groq'});await T('ollama.request',{path:'api/tags'});
 await T('hands.shot');await T('hands.start',{task:'self-test'});await T('hands.shot');await T('hands.key',{keys:'shift'});await T('hands.stop');
 await T('window',{mode:'open'});await T('window',{mode:'ball'});await L('DONE');Native.call('quit')})()"#.into());
+    } else if let Ok(how) = std::env::var("STUPID_BUDDY_SYSTEMTEST") {
+        // Linux: every System Buddy action, with the commands logged instead of run (STUPID_BUDDY_DRYRUN). "confirm"
+        // also turns Wi-Fi off, which waits for your answer in an alert.
+        std::env::set_var("STUPID_BUDDY_DRYRUN", "1");
+        let off = if how == "confirm" { "await T('system.radio',{what:'wifi',on:false});" } else { "" };
+        later(format!(r#"(async()=>{{const L=(t)=>Native.call('log',{{text:t}});const T=async(op,p)=>{{try{{const v=await Native.call(op,p||{{}});await L('OK '+op+' '+JSON.stringify(v).slice(0,200))}}catch(e){{await L('FAIL '+op+' '+e.message)}}}};
+Native.on('timer',(t)=>L('TIMER '+t));await L('HELPERS '+Object.keys(HELPERS).join(','));await T('system.openApp',{{name:'browser'}});await T('system.openApp',{{name:'nope-app'}});await T('system.settings',{{panel:'wifi'}});await T('system.settings',{{panel:'../x'}});
+await T('system.volume',{{action:'up',percent:10}});await T('system.volume',{{action:'set',percent:40}});await T('system.volume',{{action:'mute'}});await T('system.brightness',{{action:'set',percent:60}});
+await T('system.radio',{{what:'wifi',on:true}});await T('system.radio',{{what:'bluetooth',on:true}});{off}await T('system.theme',{{dark:true}});await T('system.theme',{{dark:false}});await T('system.dnd',{{on:true}});
+await T('system.lock');await T('system.screenshot');await T('system.status');await T('system.timer',{{seconds:2,text:'Stretch!'}});await T('voice.can',{{provider:'groq'}});await T('voice.can',{{provider:'ollama'}});
+await T('voice.speak',{{text:'**Klart!** Jag har satt en timer.'}});await new Promise(r=>setTimeout(r,3500));await L('DONE');Native.call('quit')}})()"#));
     } else if std::env::var("STUPID_BUDDY_SHOWCASE").is_ok() {
         // Each "SHOT name" in the log is the moment the test machine photographs the screen (see windows.yml).
         later(r#"(async()=>{const L=(t)=>Native.call('log',{text:t});const W=(ms)=>new Promise(r=>setTimeout(r,ms));const S=async(n)=>{await L('SHOT '+n);await W(2500)};

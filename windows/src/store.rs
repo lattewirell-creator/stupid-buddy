@@ -1,6 +1,7 @@
-// Settings and AI keys for the Windows version (the Mac app's UserDefaults and Keychain):
-// %APPDATA%\The Stupid Buddy\settings.json, and keys\<provider>.bin sealed with Windows' per-user data
-// protection (DPAPI), so only this Windows account can read them. Keys never reach the web page.
+// Settings and AI keys for Windows and Linux (the Mac app's UserDefaults and Keychain): settings.json in
+// %APPDATA%\The Stupid Buddy (Windows) or ~/.config/The Stupid Buddy (Linux). On Windows each key is
+// keys\<provider>.bin sealed with Windows' per-user data protection (DPAPI), so only this Windows account can read
+// it; on Linux keys live in the Secret Service (GNOME Keyring), never in a file. Keys never reach the web page.
 use serde_json::{Map, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -29,23 +30,23 @@ pub fn set(key: &str, value: Value) {
 }
 
 /* ---------------- AI keys ---------------- */
+#[cfg(windows)]
 fn key_path(provider: &str) -> PathBuf {
     let dir = base().join("keys");
     fs::create_dir_all(&dir).ok();
     dir.join(format!("{provider}.bin"))
 }
-pub fn save_key(provider: &str, key: &str) -> bool {
-    match protect(key.as_bytes()) { Some(sealed) => atomic_write(&key_path(provider), &sealed).is_ok(), None => false }
+#[cfg(windows)]
+pub fn save_key(provider: &str, key: &str) -> Result<(), String> {
+    let sealed = dpapi(key.as_bytes(), true).ok_or("Windows couldn’t lock the key away, so it wasn’t saved.")?;
+    atomic_write(&key_path(provider), &sealed).map_err(|_| "The key couldn’t be saved.".to_string())
 }
+#[cfg(windows)]
 pub fn load_key(provider: &str) -> Option<String> {
-    String::from_utf8(unprotect(&fs::read(key_path(provider)).ok()?)?).ok()
+    String::from_utf8(dpapi(&fs::read(key_path(provider)).ok()?, false)?).ok()
 }
+#[cfg(windows)]
 pub fn remove_key(provider: &str) -> bool { fs::remove_file(key_path(provider)).is_ok() }
-
-#[cfg(windows)]
-fn protect(data: &[u8]) -> Option<Vec<u8>> { dpapi(data, true) }
-#[cfg(windows)]
-fn unprotect(data: &[u8]) -> Option<Vec<u8>> { dpapi(data, false) }
 #[cfg(windows)]
 fn dpapi(data: &[u8], seal: bool) -> Option<Vec<u8>> {
     use windows_sys::Win32::Foundation::LocalFree;
@@ -61,8 +62,30 @@ fn dpapi(data: &[u8], seal: bool) -> Option<Vec<u8>> {
     unsafe { LocalFree(output.pbData as _) };
     Some(result)
 }
-// Development builds on a Mac (checking the code compiles): plain files.
-#[cfg(not(windows))]
-fn protect(data: &[u8]) -> Option<Vec<u8>> { Some(data.to_vec()) }
-#[cfg(not(windows))]
-fn unprotect(data: &[u8]) -> Option<Vec<u8>> { Some(data.to_vec()) }
+
+// Linux: one Secret Service item per provider ("stupid-buddy" / provider), encrypted on its way over D-Bus. With
+// no keyring running, keys aren't saved at all (and the page says why).
+#[cfg(target_os = "linux")]
+fn entry(provider: &str) -> Result<keyring::Entry, keyring::Error> { keyring::Entry::new("stupid-buddy", provider) }
+#[cfg(target_os = "linux")]
+pub fn save_key(provider: &str, key: &str) -> Result<(), String> {
+    entry(provider).and_then(|e| e.set_password(key))
+        .map_err(|_| "Buddy keeps keys only in your system’s keyring, and it couldn’t reach one. Is GNOME Keyring (or another Secret Service) running and unlocked?".into())
+}
+#[cfg(target_os = "linux")]
+pub fn load_key(provider: &str) -> Option<String> { entry(provider).and_then(|e| e.get_password()).ok() }
+#[cfg(target_os = "linux")]
+pub fn remove_key(provider: &str) -> bool { entry(provider).and_then(|e| e.delete_credential()).is_ok() }
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    // Needs a Secret Service on the session bus (e.g. gnome-keyring-daemon): cargo test -- --ignored
+    #[test]
+    #[ignore]
+    fn keyring_round_trip() {
+        super::save_key("selftest", "sk-test-1234567890").unwrap();
+        assert_eq!(super::load_key("selftest").as_deref(), Some("sk-test-1234567890"));
+        assert!(super::remove_key("selftest"));
+        assert!(super::load_key("selftest").is_none());
+    }
+}

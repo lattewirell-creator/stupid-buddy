@@ -9,6 +9,7 @@ let models = Object.assign({ lead: AI.DEFAULT_MODEL, files: AI.DEFAULT_MODEL, wr
 let busy = null, ready = false;
 const onPhone = window.__platform === 'android';
 if (onPhone) delete models.hands;
+for (const k of Object.keys(HELPERS)) if (!models[k]) models[k] = models.lead;   // a helper that's newer than your saved choices
 if (onPhone) { document.body.classList.remove('closed'); for (const k of Object.keys(models)) if (/qwen|llama3|:8b/.test(models[k]) && !/70b|versatile/.test(models[k])) models[k] = AI.PROVIDERS[AI.provider()].model; }
 
 /* ---------------- open / close, and dragging the ball ---------------- */
@@ -75,7 +76,7 @@ async function close() {
   Native.on('landed', () => { face('happy'); setTimeout(() => face(''), 900); });
 }
 $('closeBtn').addEventListener('click', close);
-addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.body.classList.contains('closed')) { if (busy) stop(); else close(); } });
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.body.classList.contains('closed')) { if (listening) Native.call('voice.stop').catch(() => {}); else if (busy) stop(); else close(); } });
 
 /* ---------------- on the phone: throw Buddy around the screen ---------------- */
 // Grab the ball in the header and fling it: it flies, bounces off the edges and lands above the box you type in.
@@ -144,8 +145,10 @@ function greet() {
   log.replaceChildren();
   const L = Look.get();
   say('bot', `Hi${L.call ? ' ' + L.call : ''}! I’m **${L.name}**, and I’ve got a little team:\n- **File Buddy** finds, reads and tidies your files\n- **Writer Buddy** writes emails, notes and documents\n- **Web Buddy** looks things up for you` +
-    (HELPERS.hands ? '\n- **Hands Buddy** uses your other apps (it asks first, and Esc stops it)' : '') + `\nTell me what you need. I’ll always ask before moving or deleting anything.`);
-  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : `Find the best free note apps for ${window.__platform === 'windows' ? 'Windows' : 'Mac'}`, 'Write a short thank-you email']);
+    (HELPERS.hands ? '\n- **Hands Buddy** uses your other apps (it asks first, and Esc stops it)' : '') +
+    (HELPERS.system ? '\n- **System Buddy** opens apps and changes things like the volume, Wi-Fi and dark mode' : '') +
+    (AWAY.hands ? '\n- **Hands Buddy** is on Mac and Windows only for now (Linux keeps other apps private)' : '') + `\nTell me what you need. I’ll always ask before moving or deleting anything.`);
+  chips(['Tidy my Downloads folder', 'What’s in my Documents?', onPhone ? 'Find the best free note apps for Android' : `Find the best free note apps for ${{ windows: 'Windows', linux: 'Linux' }[window.__platform] || 'Mac'}`, 'Write a short thank-you email', ...(HELPERS.system ? ['Remind me to stretch in 30 minutes'] : [])]);
 }
 function chips(list) {
   const box = $('chips'); box.replaceChildren();
@@ -173,7 +176,7 @@ function workArea() {
 
 const ERRORS = { offline: 'I can’t reach my brain. Is Ollama running (or the internet on)? Then try again.', nomodel: 'That AI model isn’t available. Pick another in Settings.',
   nokey: 'Add your free key in Settings first.', badkey: 'That key didn’t work. Check it in Settings.', ratelimit: 'The free daily amount is used up for now. Try again later, or switch to This ' + DEVICE + ' in Settings.' };
-async function ask(text) {
+async function ask(text, { voice = false } = {}) {
   text = String(text ?? $('input').value).trim();
   if (!text || busy) return;
   $('input').value = ''; grow(); $('chips').replaceChildren();
@@ -189,8 +192,9 @@ async function ask(text) {
     if (typeof Agents !== 'undefined' && Agents.running()) { status('Pausing an agent…'); await Promise.race([Agents.yield(), new Promise((r) => setTimeout(r, 8000)), new Promise((r) => controller.signal.addEventListener('abort', r, { once: true }))]); }
     if (controller.signal.aborted) throw new Error('stopped');
     status('Thinking…');
-    const answer = await Team.ask(text, area, { models, name: Look.name(), persona: Look.persona(), signal: controller.signal });
+    const answer = await Team.ask(text, area, { models, name: Look.name(), persona: Look.persona(), signal: controller.signal, voice });
     thinking.classList.remove('typing'); thinking.innerHTML = md(answer);
+    if (voice) speak(answer);
     face('happy'); setTimeout(() => face(''), 1600);
   } catch (e) {
     thinking.remove();
@@ -210,6 +214,40 @@ function sendButton(stopping) {
   const b = $('send'); b.classList.toggle('stop', stopping); b.setAttribute('aria-label', stopping ? 'Stop' : 'Send');
   b.innerHTML = stopping ? '<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" stroke="none"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M5 12h13M12.5 6l6 6-6 6"/></svg>';
 }
+/* ---------------- talking, and summoning Buddy (Linux) ---------------- */
+// The app records you (windows/src/voice.rs): press the mic and talk; it stops when you do, when you press it again,
+// or when you let go after holding it. What you said goes to Buddy like typed text, and the answer is read aloud.
+const canTalk = window.__platform === 'linux';
+let listening = false;
+const speakAnswers = () => localStorage.getItem('speakAnswers') !== 'off';
+const speak = (text) => { if (canTalk && speakAnswers()) Native.call('voice.speak', { text }).catch(() => {}); };
+async function listen() {
+  if (listening || busy || !canTalk) return;
+  const provider = AI.provider();
+  const can = await Native.call('voice.can', { provider }).catch(() => ({}));
+  if (!can.listen) { note(`${AI.PROVIDERS[provider].name} can’t hear yet. To talk to Buddy, pick Groq or Google Gemini in Settings (both have free keys).`, { label: 'Settings', fn: showSettings }); return; }
+  listening = true; body.classList.add('listening'); status('Listening…'); face('think'); $('input').placeholder = 'Listening… (press the mic again to stop)';
+  try { const text = await Native.call('voice.listen', { provider }); listening = false; if (text) ask(text, { voice: true }); }
+  catch (e) { if (e.message !== 'stopped') note(ERRORS[e.message] || e.message, ['nokey', 'badkey', 'ratelimit'].includes(e.message) ? { label: 'Settings', fn: showSettings } : null); face(''); }
+  finally { listening = false; body.classList.remove('listening'); $('mic').style.setProperty('--level', 0); $('input').placeholder = 'What should we do?'; if (!busy) refreshStatus(); }
+}
+if (canTalk) {
+  const mic = $('mic'); let downAt = 0;
+  mic.classList.remove('hidden');
+  mic.addEventListener('pointerdown', (e) => { e.preventDefault(); if (listening) { Native.call('voice.stop').catch(() => {}); downAt = 0; } else { downAt = performance.now(); listen(); } });
+  mic.addEventListener('pointerup', () => { if (downAt && listening && performance.now() - downAt > 600) Native.call('voice.stop').catch(() => {}); downAt = 0; });
+  Native.on('voice:level', (l) => mic.style.setProperty('--level', l));
+}
+// Summoned (stupid-buddy --summon, e.g. Super+Space): open, ready to type, or listening with --voice.
+async function summon(how) {
+  if (body.classList.contains('closed')) await open();
+  if (how === 'voice') listen(); else setTimeout(() => $('input').focus(), 200);
+}
+Native.on('summon', (s) => summon(s.voice ? 'voice' : 'text'));
+if (window.__summon) setTimeout(() => summon(window.__summon), 500);
+// A timer or reminder from System Buddy went off (it's also a desktop notification).
+Native.on('timer', (text) => { say('bot', '⏰ ' + text); face('happy'); setTimeout(() => face(''), 1600); speak(text); });
+
 const grow = () => { const i = $('input'); i.style.height = 'auto'; i.style.height = Math.min(140, i.scrollHeight) + 'px'; };
 $('input').addEventListener('input', grow);
 $('input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask(); } });
@@ -250,7 +288,7 @@ async function showSettings() {
   const s = await AI.status();
   const pName = AI.PROVIDERS[AI.provider()].name;
   $('ollamaState').textContent = s.provider !== 'ollama'
-    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept ${DEVICE === 'Mac' ? 'in your Mac’s Keychain' : 'safely on this ' + DEVICE}.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
+    ? (s.needsKey ? `Get a free key from ${pName} and paste it above. It’s kept ${DEVICE === 'Mac' ? 'in your Mac’s Keychain' : window.__platform === 'linux' ? 'in your system’s keyring' : 'safely on this ' + DEVICE}.` : s.badKey ? 'That key didn’t work. Paste a new one above.' : s.running ? `Connected to ${pName}. Your requests go to ${pName} over the internet.` : `Can’t reach ${pName} right now.`)
     : s.running ? (s.models.length ? `Ollama is running with ${s.models.length} model${s.models.length === 1 ? '' : 's'}. Everything stays on this ${DEVICE}.` : 'Ollama is running, but no AI model is downloaded yet. In a terminal: ollama pull ' + AI.DEFAULT_MODEL)
     : 'Ollama isn’t running. Install it from ollama.com (free), open it, then come back.';
   const names = s.models.map((m) => m.name);
@@ -271,8 +309,10 @@ async function showSettings() {
     row.appendChild(sel); box.appendChild(row);
   }
   renderRoots(await Native.call('files.roots').catch(() => []));
+  voiceNote();
   const team = $('teamList'); team.replaceChildren();
   for (const h of Object.values(HELPERS)) { const r = el('div', 'row'); r.appendChild(ballEl(h.color)); const g = el('div', 'grow'); g.append(el('div', null, h.name), el('small', null, 'Can: ' + h.job)); r.appendChild(g); team.appendChild(r); }
+  for (const h of Object.values(AWAY)) { const r = el('div', 'row away'); r.appendChild(ballEl(h.color)); const g = el('div', 'grow'); g.append(el('div', null, h.name + ' · unavailable'), el('small', null, h.why)); r.appendChild(g); team.appendChild(r); }
 }
 function renderRoots(list) { $('roots').textContent = list.join(' · '); }
 // Windows: Buddy updates itself (windows/src/update.rs); here you can also check by hand.
@@ -285,6 +325,23 @@ if (window.__platform === 'windows') {
     try { note.textContent = (await Native.call('update.check')) || 'You have the newest Buddy.'; } catch (e) { note.textContent = e.message; }
     btn.disabled = false;
   });
+}
+// Linux: talking to Buddy (which AI services can hear, reading answers aloud).
+if (canTalk) {
+  $('voiceBox').classList.remove('hidden');
+  const box = $('speakAnswers'); box.checked = speakAnswers();
+  box.addEventListener('change', () => localStorage.setItem('speakAnswers', box.checked ? 'on' : 'off'));
+}
+async function voiceNote() {
+  if (!canTalk) return;
+  const can = await Native.call('voice.can', { provider: AI.provider() }).catch(() => ({}));
+  $('voiceNote').textContent = (can.listen ? 'Press the mic and talk, in Swedish, English or another language. ' : `${AI.PROVIDERS[AI.provider()].name} can’t hear: talking works with Groq or Google Gemini. `) +
+    (can.speak ? '' : 'Reading aloud needs speech-dispatcher.') + ' Summon Buddy from anywhere with stupid-buddy --summon (Stupid OS: Super+Space).';
+}
+// Linux: the system's software updates bring new versions (windows/src/update.rs says so too).
+if (window.__platform === 'linux') {
+  const note = $('updateNote');
+  Native.call('update.version').then((v) => { note.classList.remove('hidden'); note.textContent = `You have Buddy ${v}. Updates come with your system’s software updates.`; }).catch(() => {});
 }
 $('addRoot').addEventListener('click', async () => renderRoots(await Native.call('files.addRoot').catch(() => [])));
 function hideSettings() { $('settings').classList.add('hidden'); $('log').classList.remove('hidden'); $('ask').classList.remove('hidden'); $('chips').classList.remove('hidden'); }

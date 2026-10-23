@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Stupid Buddy</title>
-<meta name="description" content="Buddy lives on your Mac or Windows desktop with a small AI team that tidies files, writes for you and looks things up. Free, and it always asks first.">
+<meta name="description" content="Buddy lives on your Mac, Windows or Linux desktop with a small AI team that tidies files, writes for you and looks things up. Free, and it always asks first.">
 <meta property="og:title" content="The Stupid Buddy">
-<meta property="og:description" content="Your desktop got a buddy. And Buddy got a team. Free for Mac, Windows and Android.">
+<meta property="og:description" content="Your desktop got a buddy. And Buddy got a team. Free for Mac, Windows, Linux and Android.">
 <meta property="og:image" content="https://stupidbuddy.vercel.app/img/icon.png">
 <meta name="theme-color" content="#FAF9F5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1F1E1D" media="(prefers-color-scheme: dark)">
@@ -158,13 +158,14 @@ footer .grow { flex: 1; }
   <div class="wrap hero">
     <div>
       <h1>Your desktop got a buddy.<br><em>And Buddy got a team.</em></h1>
-      <p class="lead">Buddy from The Stupid Browser now lives on your Mac, your Windows PC and your Android phone. Tell it what you need and its helpers get to work: tidying files, writing for you and looking things up. It always asks before it moves or deletes anything.</p>
+      <p class="lead">Buddy from The Stupid Browser now lives on your Mac, your Windows or Linux PC and your Android phone. Tell it what you need and its helpers get to work: tidying files, writing for you and looking things up. It always asks before it moves or deletes anything.</p>
       <div class="ctas">
         <a class="cta" data-dl href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Download for Mac <span id="dlSize">.zip</span></a>
         <a class="cta alt" data-win href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Windows <span id="winSize">.exe</span></a>
+        <a class="cta alt" data-deb href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Linux <span id="debSize">.deb</span></a>
         <a class="cta alt" data-apk href="https://github.com/lattewirell-creator/stupid-buddy/releases/latest">Android <span id="apkSize">.apk</span></a>
       </div>
-      <div class="small" id="dlNote">Free · Mac (macOS 14+, Apple chip and Intel) · Windows 10 and 11 · Android 8+</div>
+      <div class="small" id="dlNote">Free · Mac (macOS 14+, Apple chip and Intel) · Windows 10 and 11 · Linux (Ubuntu 24.04, Debian 13 and friends) · Android 8+</div>
     </div>
     <div class="hero-art" aria-hidden="true">
       <span class="ball big"><i></i><i></i></span>
@@ -241,9 +242,9 @@ footer .grow { flex: 1; }
       <h2>Get Buddy going</h2>
       <p class="sub">About two minutes.</p>
       <div class="steps">
-        <div class="step"><p><b>Download</b> it. Mac: unzip and drag The Stupid Buddy into Applications (first time: right-click → Open → Open). Windows: run the installer (if Windows warns you, click More info → Run anyway). Android: open the APK on your phone and allow the install.</p></div>
+        <div class="step"><p><b>Download</b> it. Mac: unzip and drag The Stupid Buddy into Applications (first time: right-click → Open → Open). Windows: run the installer (if Windows warns you, click More info → Run anyway). Linux: open the .deb and click Install, or run <code>sudo apt install ./StupidBuddy-*.deb</code> (on <a href="https://github.com/lattewirell-creator/smartos">Stupid OS</a> Buddy is already there). Android: open the APK on your phone and allow the install.</p></div>
         <div class="step"><p><b>Choose a brain.</b> Free online: get a key at Groq or Google and paste it in Buddy’s Settings. Or on your computer: install <a href="https://ollama.com">Ollama</a> and run <code>ollama pull qwen3-vl:8b-instruct</code>.</p></div>
-        <div class="step"><p><b>Talk to Buddy.</b> On a Mac or PC, click the ball in the corner of your screen. On a phone, just open the app (and fling Buddy’s ball around if you like).</p></div>
+        <div class="step"><p><b>Talk to Buddy.</b> On a Mac or PC, click the ball in the corner of your screen. On Stupid OS, press Super+Space from anywhere and just say what you need. On a phone, just open the app (and fling Buddy’s ball around if you like).</p></div>
       </div>
     </div>
   </section>
@@ -474,12 +475,25 @@ footer .grow { flex: 1; }
 fetch('https://api.github.com/repos/lattewirell-creator/stupid-buddy/releases/latest').then((r) => (r.ok ? r.json() : null)).then((rel) => {
   if (!rel) return;
   const zip = (rel.assets || []).find((a) => /\.zip$/.test(a.name)), apk = (rel.assets || []).find((a) => /android\.apk$/.test(a.name));
-  const win = (rel.assets || []).find((a) => /windows-setup\.exe$/.test(a.name));
+  const win = (rel.assets || []).find((a) => /windows-setup\.exe$/.test(a.name)), deb = (rel.assets || []).find((a) => /-linux-amd64\.deb$/.test(a.name));
+  if (deb) {
+    document.querySelectorAll('[data-deb]').forEach((a) => { a.href = deb.browser_download_url; });
+    document.getElementById('debSize').textContent = Math.max(0.1, Math.round(deb.size / 104857.6) / 10) + ' MB';
+    // On a Linux desktop, the big button downloads the Linux version
+    const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    if (/Linux/i.test(p) && !/Android/i.test(navigator.userAgent)) {
+      const big = document.querySelector('.cta[data-dl]');
+      big.removeAttribute('data-dl'); big.href = deb.browser_download_url;
+      big.replaceChildren('Download for Linux ', Object.assign(document.createElement('span'), { textContent: document.getElementById('debSize').textContent }));
+      document.querySelector('[data-deb]').remove();
+    }
+  }
   if (win) { document.querySelectorAll('[data-win]').forEach((a) => { a.href = win.browser_download_url; }); document.getElementById('winSize').textContent = Math.max(0.1, Math.round(win.size / 104857.6) / 10) + ' MB'; }
   if (apk) { document.querySelectorAll('[data-apk]').forEach((a) => { a.href = apk.browser_download_url; }); document.getElementById('apkSize').textContent = Math.max(0.1, Math.round(apk.size / 104857.6) / 10) + ' MB'; }
   if (zip) {
     document.querySelectorAll('[data-dl]').forEach((a) => { a.href = zip.browser_download_url; });
-    document.getElementById('dlSize').textContent = zip.size ? Math.max(1, Math.round(zip.size / 1048576 * 10) / 10) + ' MB' : '.zip';
+    const dlSize = document.getElementById('dlSize');
+    if (dlSize) dlSize.textContent = zip.size ? Math.max(1, Math.round(zip.size / 1048576 * 10) / 10) + ' MB' : '.zip';
   }
   const v = String(rel.tag_name || '').replace(/^v/, '');
   if (v) document.getElementById('ver').textContent = 'Version ' + v + ' · Free and open source';

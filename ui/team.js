@@ -1,6 +1,6 @@
 /* The Stupid Buddy: the team. Buddy (the lead) talks with you and hands work to helpers, each with its own
  * job, tools and colour. A helper works in small steps (look, read, move…) until its part is done, then Buddy
- * puts the results together. Anything risky is confirmed by you in a system alert (Tools.swift on Mac, windows/src/tools.rs on Windows). */
+ * puts the results together. Anything risky is confirmed by you in a system alert (Tools.swift on Mac, windows/src/tools.rs on Windows and Linux). */
 'use strict';
 
 /* ---------------- the app side (Mac, Windows or Android) ---------------- */
@@ -47,6 +47,25 @@ const TOOLS = {
   type_text: { def: fn('type_text', 'Type text where the cursor is (click the field first).', { text: str('The text to type') }), run: (a) => Native.call('hands.type', { text: String(a.text || '') }), say: (a) => `Typing “${String(a.text || '').slice(0, 40)}”` },
   press_keys: { def: fn('press_keys', 'Press a key or shortcut, like return, tab, esc, cmd+c, cmd+v, cmd+a, cmd+w, down.', { keys: str('The key or shortcut') }), run: (a) => Native.call('hands.key', { keys: String(a.keys || '') }), say: (a) => `Pressing ${a.keys}` },
   scroll: { def: fn('scroll', 'Scroll at a spot. Negative amount scrolls down, positive scrolls up.', { x: num('0–1000'), y: num('0–1000'), amount: num('Lines, like -5 (down) or 5 (up)') }, ['x', 'y', 'amount']), run: (a) => handsAct('hands.scroll', a), say: (a) => (a.amount > 0 ? 'Scrolling up' : 'Scrolling down') },
+  // System Buddy (Linux): the computer's own settings and apps (windows/src/system.rs).
+  launch_app: { def: fn('launch_app', 'Open an installed app by name, like Files, Text Editor, Calculator, Terminal, Firefox, or “browser”.', { name: str('The app name') }), run: (a) => Native.call('system.openApp', { name: String(a.name || '') }), say: (a) => `Opening ${a.name}` },
+  open_settings: { def: fn('open_settings', 'Open the system Settings, at a page: wifi, bluetooth, network, display, sound, power, background, notifications, keyboard, mouse, printers, privacy, users, apps, system, or empty for the start.', { panel: str('The Settings page, or empty') }, []),
+    run: (a) => Native.call('system.settings', { panel: String(a.panel || '') }), say: (a) => `Opening Settings${a.panel ? ' › ' + a.panel : ''}` },
+  set_volume: { def: fn('set_volume', 'Change the sound volume.', { action: { type: 'string', enum: ['up', 'down', 'set', 'mute', 'unmute'], description: 'What to do' }, percent: num('For set: the volume 0–100. For up/down: how much (default 10).') }, ['action']),
+    run: (a) => Native.call('system.volume', { action: a.action, percent: Number(a.percent ?? (a.action === 'set' ? 50 : 10)) }), say: (a) => `Volume ${a.action}${a.action === 'set' ? ' to ' + a.percent + '%' : ''}` },
+  set_brightness: { def: fn('set_brightness', 'Change the screen brightness.', { action: { type: 'string', enum: ['up', 'down', 'set'], description: 'What to do' }, percent: num('For set: 1–100. For up/down: how much (default 10).') }, ['action']),
+    run: (a) => Native.call('system.brightness', { action: a.action, percent: Number(a.percent ?? (a.action === 'set' ? 50 : 10)) }), say: (a) => `Brightness ${a.action}` },
+  switch_radio: { def: fn('switch_radio', 'Turn Wi-Fi or Bluetooth on or off (turning off asks the user first).', { what: { type: 'string', enum: ['wifi', 'bluetooth'], description: 'Which one' }, on: { type: 'boolean', description: 'true = on, false = off' } }),
+    run: (a) => Native.call('system.radio', { what: a.what, on: a.on !== false && a.on !== 'false' }), say: (a) => `Turning ${a.what === 'bluetooth' ? 'Bluetooth' : 'Wi-Fi'} ${a.on === false || a.on === 'false' ? 'off' : 'on'}` },
+  dark_mode: { def: fn('dark_mode', 'Switch the look of the desktop between dark and light.', { dark: { type: 'boolean', description: 'true = dark, false = light' } }),
+    run: (a) => Native.call('system.theme', { dark: a.dark !== false && a.dark !== 'false' }), say: (a) => (a.dark === false || a.dark === 'false' ? 'Light mode' : 'Dark mode') },
+  do_not_disturb: { def: fn('do_not_disturb', 'Turn do-not-disturb on (notifications stay quiet) or off.', { on: { type: 'boolean', description: 'true = quiet, false = normal' } }),
+    run: (a) => Native.call('system.dnd', { on: a.on !== false && a.on !== 'false' }), say: (a) => `Do not disturb ${a.on === false || a.on === 'false' ? 'off' : 'on'}` },
+  lock_screen: { def: fn('lock_screen', 'Lock the screen.'), run: () => Native.call('system.lock'), say: () => 'Locking the screen' },
+  take_screenshot: { def: fn('take_screenshot', 'Take a screenshot (saved in Pictures › Screenshots).'), run: () => Native.call('system.screenshot'), say: () => 'Taking a screenshot' },
+  set_timer: { def: fn('set_timer', 'Set a timer or reminder: a notification after some minutes. For a clock time, count the minutes from now.', { minutes: num('In how many minutes (can be a fraction)'), text: str('What to remind about, or empty for a plain timer') }, ['minutes']),
+    run: (a) => Native.call('system.timer', { seconds: Number(a.minutes) * 60, text: String(a.text || '') }), say: (a) => `Timer: ${a.minutes} min` },
+  system_status: { def: fn('system_status', 'Check the battery, power, memory, free disk space, volume and Wi-Fi.'), run: () => Native.call('system.status'), say: () => 'Checking the computer' },
   open_app: { def: fn('open_app', 'Open (or switch to) an app by its name, like Notes, Safari, Calendar (Mac) or Notepad, Edge, Outlook (Windows).', { name: str('The app name') }), run: (a) => Native.call('hands.openApp', { name: String(a.name || '') }), say: (a) => `Opening ${a.name}` },
 };
 const short = (p) => String(p || '').split('/').slice(-2).join('/');
@@ -66,13 +85,21 @@ const HELPERS = {
     tools: ['look_at_screen', 'click', 'double_click', 'right_click', 'type_text', 'press_keys', 'scroll', 'open_app'],
     rules: 'You see a screenshot after each action. Spots are given as x and y on a 0–1000 grid over the screenshot (0,0 is the top-left corner, 1000,1000 the bottom-right). Do one or two actions at a time, then check the new screenshot. To start, open the app you need with open_app. Always say in “what” what you click. Never type passwords, card numbers or codes; if a password is needed, stop and ask the user to type it. Don’t send, buy, post or delete anything the user didn’t clearly ask for. If you are stuck after a few tries, stop and say what you saw.' },
 };
+// Linux: System Buddy does the "Siri things" (settings, apps, timers) through the system's own tools.
+if (window.__platform === 'linux') HELPERS.system = { name: 'System Buddy', color: '#C9973F', job: 'controls this computer: opens apps, websites and Settings, changes the volume, screen brightness, Wi-Fi, Bluetooth, dark mode and do-not-disturb, locks the screen, takes screenshots, sets timers and reminders, and tells how the battery and computer are doing',
+  tools: ['launch_app', 'open_in_browser', 'open_settings', 'set_volume', 'set_brightness', 'switch_radio', 'dark_mode', 'do_not_disturb', 'lock_screen', 'take_screenshot', 'set_timer', 'system_status'],
+  rules: 'Do exactly what was asked, usually with one tool call, then say in one short sentence what you did. Only change what the user asked for. For a reminder at a clock time, work out the minutes from the time now. If something isn’t possible here, say so briefly.' };
 if (window.__platform === 'android') delete HELPERS.hands;   // a phone can't lend Buddy its hands
+// Linux: not yet (Wayland keeps other apps' screens and keyboards private). The team leaves Hands Buddy out, and
+// the greeting and Settings say why.
+const AWAY = {};
+if (window.__platform === 'linux') { AWAY.hands = Object.assign({}, HELPERS.hands, { why: 'Not on Linux yet: your desktop keeps other apps’ screens and keyboards private. It works on Mac and Windows.' }); delete HELPERS.hands; }
 
 /* ---------------- running a helper ---------------- */
 async function context() {
   let roots = [];
   try { roots = await Native.call('files.roots'); } catch {}
-  return `Today is ${new Date().toDateString()}. The user's home folder is ~. You may only use these folders: ${roots.join(', ') || '~/Desktop, ~/Documents, ~/Downloads'}.`;
+  return `Today is ${new Date().toDateString()}, ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. The user's home folder is ~. You may only use these folders: ${roots.join(', ') || '~/Desktop, ~/Documents, ~/Downloads'}.`;
 }
 const clip = (v) => { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > 7000 ? s.slice(0, 7000) + '…(cut)' : s; };
 
@@ -150,11 +177,11 @@ const Team = {
    * You ask; Buddy answers, handing parts to helpers when it helps.
    * ui: { job(key, task) → { step(text, err), done(summary) }, typing(text) }. Returns Buddy's reply.
    */
-  async ask(text, ui, { models, name = 'Buddy', persona = '', signal, without = [] }) {
+  async ask(text, ui, { models, name = 'Buddy', persona = '', signal, without = [], voice = false }) {
     const leadTools = LEAD_TOOLS.filter((t) => !without.includes(t.function.name.replace(/^ask_/, '')));
     const sys = `You are ${name}, a helper who lives on the user's ${DEVICE === 'phone' ? 'phone' : DEVICE + ' desktop'}. ${persona}\nYou lead a small team:\n` +
       Object.entries(HELPERS).filter(([k]) => !without.includes(k)).map(([, h]) => `- ${h.name}: ${h.job}`).join('\n') +
-      `\nFor chat and quick questions, just answer. For real work, give it to the right helper with its ask_ tool. Give one helper the user's whole request about its area in ONE task, in the user's own words (never guess file names; the helper looks them up). Use several helpers only when the request really has different kinds of work (for example: find facts on the web, then write a document). Then tell the user in a few friendly sentences what was done, and include any text a helper wrote for them (like an email) in full. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.\n${await context()}`;
+      `\nFor chat and quick questions, just answer. For real work, give it to the right helper with its ask_ tool. Give one helper the user's whole request about its area in ONE task, in the user's own words (never guess file names; the helper looks them up). Use several helpers only when the request really has different kinds of work (for example: find facts on the web, then write a document). Then tell the user in a few friendly sentences what was done, and include any text a helper wrote for them (like an email) in full. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.${voice ? ' The user said this out loud and will hear your answer: one or two short spoken sentences, no lists or formatting.' : ''}\n${await context()}`;
     const messages = [{ role: 'system', content: sys }, ...this.history.slice(-12), { role: 'user', content: text }];
     for (let round = 0; round < 6; round++) {
       if (signal.aborted) throw new Error('stopped');

@@ -1,6 +1,7 @@
 // What the helpers can do with files and the web (mac/Sources/Tools.swift). Every path must be inside a folder
 // you allowed (Desktop, Documents and Downloads to start); moving, renaming, replacing and deleting ask you first,
-// in a Windows alert the AI can't answer. Deleting goes to the Recycle Bin. Everything here runs on a worker thread.
+// in an alert the AI can't answer. Deleting goes to the Recycle Bin (Windows) or the Trash (Linux). Everything here
+// runs on a worker thread.
 use crate::{store, sys};
 use regex::Regex;
 use serde_json::{json, Map, Value};
@@ -9,6 +10,7 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 type Out = Result<Value, String>;
+const BIN: &str = if cfg!(windows) { "Recycle Bin" } else { "Trash" };
 
 fn home() -> PathBuf { dirs::home_dir().unwrap_or_default() }
 /// "~/Downloads/a.txt" style, the way the helpers write paths (also on Windows).
@@ -32,7 +34,9 @@ pub fn roots() -> Vec<PathBuf> {
     let list: Vec<PathBuf> = match saved {
         Some(s) => s.into_iter().map(PathBuf::from).collect(),
         // Known folders, so a Desktop or Documents moved into OneDrive is found too.
-        None => [dirs::desktop_dir(), dirs::document_dir(), dirs::download_dir()].into_iter().flatten().collect(),
+        // On Linux without XDG user folders set up, the usual names in the home folder.
+        None => [dirs::desktop_dir().or(Some(home().join("Desktop"))), dirs::document_dir().or(Some(home().join("Documents"))), dirs::download_dir().or(Some(home().join("Downloads")))]
+            .into_iter().flatten().collect(),
     };
     list.into_iter().map(|p| dunce::canonicalize(&p).unwrap_or(p)).collect()
 }
@@ -109,9 +113,9 @@ pub fn handle(op: &str, m: &Map<String, Value>) -> Out {
         "files.trash" => {
             let Some(p) = allowed(m.get("path")) else { return outside() };
             if !p.exists() { return missing(&p); }
-            if !sys::confirm(&format!("Move “{}” to the Recycle Bin?", name(&p)), "You can get it back from the Recycle Bin.", "Move to Recycle Bin") { return said_no(); }
+            if !sys::confirm(&format!("Move “{}” to the {BIN}?", name(&p)), &format!("You can get it back from the {BIN}."), &format!("Move to {BIN}")) { return said_no(); }
             trash::delete(&p).map_err(|e| e.to_string())?;
-            Ok(json!(format!("Moved to the Recycle Bin: {}", name(&p))))
+            Ok(json!(format!("Moved to the {BIN}: {}", name(&p))))
         }
         "files.write" => {
             let Some(p) = allowed(m.get("path")) else { return outside() };
@@ -124,7 +128,7 @@ pub fn handle(op: &str, m: &Map<String, Value>) -> Out {
         }
         "files.reveal" => {
             let Some(p) = allowed(m.get("path")) else { return outside() };
-            let _ = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+            sys::reveal(&p);
             Ok(json!(true))
         }
         "files.open" => {
@@ -139,16 +143,26 @@ pub fn handle(op: &str, m: &Map<String, Value>) -> Out {
             let url = str_of(m, "url");
             if !(url.starts_with("https://") || url.starts_with("http://")) { return Err("bad link".into()); }
             // The Stupid Browser if it's installed, otherwise the usual browser.
-            let browser = dirs::data_local_dir().unwrap_or_default().join("Programs").join("The Stupid Browser").join("StupidBrowser.exe");
+            let browser = if cfg!(windows) { dirs::data_local_dir().unwrap_or_default().join("Programs").join("The Stupid Browser").join("StupidBrowser.exe") }
+                else { PathBuf::from("/usr/bin/stupid-browser") };
             if !(browser.exists() && std::process::Command::new(&browser).arg(url).spawn().is_ok()) { sys::shell_open(url); }
             Ok(json!(format!("Opened {}", host(url))))
         }
         "clipboard.write" => {
-            arboard::Clipboard::new().and_then(|mut c| c.set_text(str_of(m, "text").to_string())).map_err(|_| "I couldn’t copy that.".to_string())?;
+            copy(str_of(m, "text")).map_err(|_| "I couldn’t copy that.".to_string())?;
             Ok(json!("Copied"))
         }
         _ => Err(format!("unknown tool {op}")),
     }
+}
+
+/// On Linux (X11) copied text is served by whoever copied it, for as long as they're around: so Buddy keeps one
+/// clipboard for its whole life instead of one per copy.
+fn copy(text: &str) -> Result<(), arboard::Error> {
+    static CLIP: std::sync::Mutex<Option<arboard::Clipboard>> = std::sync::Mutex::new(None);
+    let mut clip = CLIP.lock().unwrap_or_else(|e| e.into_inner());
+    if clip.is_none() { *clip = Some(arboard::Clipboard::new()?); }
+    clip.as_mut().unwrap().set_text(text.to_string())
 }
 
 fn list(m: &Map<String, Value>) -> Out {

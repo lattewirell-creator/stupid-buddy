@@ -49,7 +49,7 @@ fn watch(on: &AtomicBool) -> Vec<Value> {
         if pressed {
             let after_password = typing.as_ref().map(|b| b.password).unwrap_or(false);
             if let Some(b) = typing.take() { steps.push(typed(at, b)); }
-            let (x, y) = crate::sys::cursor().unwrap_or((0, 0));
+            let (x, y) = crate::sys::screen_cursor().unwrap_or((0, 0));
             let (what, window) = (imp::element_at(x, y), imp::window_title());
             // No picture right after a password, or of a click on another screen (only the main one is captured).
             let image = if after_password || !imp::on_main_screen(x, y) { String::new() } else { hands::snap(SHOT_WIDTH, Some((x, y))).map(|s| s.0).unwrap_or_default() };

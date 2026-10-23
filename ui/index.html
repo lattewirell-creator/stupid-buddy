@@ -40,6 +40,11 @@
         </div>
         <div id="ollamaState" class="note"></div>
       </div>
+      <div id="voiceBox" class="group hidden">
+        <div class="label">Talking to Buddy</div>
+        <label class="row check"><input id="speakAnswers" type="checkbox"><span class="grow">Read answers aloud when I talk</span></label>
+        <div id="voiceNote" class="note"></div>
+      </div>
       <div class="group">
         <div class="label">Which model each one uses</div>
         <div id="models"></div>
@@ -62,6 +67,7 @@
     <div id="chips"></div>
     <form id="ask">
       <textarea id="input" rows="1" placeholder="What should we do?" autofocus></textarea>
+      <button id="mic" class="send mic hidden" type="button" aria-label="Talk"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
       <button id="send" class="send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M5 12h13M12.5 6l6 6-6 6"/></svg></button>
     </form>
   </main>
