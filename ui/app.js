@@ -25,7 +25,10 @@ async function open() {
   let at = null;
   try { at = await Native.call('window', { mode: 'open' }); } catch {}
   if (at && typeof at.x === 'number') { $('panel').style.setProperty('--ox', at.x + 'px'); $('panel').style.setProperty('--oy', at.y + 'px'); }
-  void $('panel').offsetWidth;   // lay out the tiny see-through panel first, so removing 'opening' animates from it
+  // Let the resized window paint once before the panel grows (on Windows the first frames after a resize are slow, and
+  // animating through them stuttered).
+  void $('panel').offsetWidth;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   body.classList.remove('opening'); moving = false;
   setTimeout(() => $('input').focus(), 180);
 }

@@ -38,7 +38,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
   let tools = Tools()
   lazy var physics = Physics(app: self)
   lazy var hands = Hands(app: self)
-  static let ballSize = NSSize(width: 92, height: 92)
+  static let ballSize = NSSize(width: 120, height: 120)   // room around the ball for raised arms and squash
   static let openSize = NSSize(width: 440, height: 660)
 
   /// Clicking Buddy's Dock icon opens the panel.
