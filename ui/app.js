@@ -186,7 +186,7 @@ async function ask(text) {
   try {
     // You come first: an agent working in the background steps aside (it stops after its current step and tries again
     // later). Wait for it to really stop, so it can't touch anything this turn starts.
-    if (typeof Agents !== 'undefined' && Agents.running()) { status('Pausing an agent…'); await Promise.race([Agents.yield(), new Promise((r) => setTimeout(r, 8000))]); }
+    if (typeof Agents !== 'undefined' && Agents.running()) { status('Pausing an agent…'); await Promise.race([Agents.yield(), new Promise((r) => setTimeout(r, 8000)), new Promise((r) => controller.signal.addEventListener('abort', r, { once: true }))]); }
     if (controller.signal.aborted) throw new Error('stopped');
     status('Thinking…');
     const answer = await Team.ask(text, area, { models, name: Look.name(), persona: Look.persona(), signal: controller.signal });
