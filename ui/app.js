@@ -176,6 +176,8 @@ const ERRORS = { offline: 'I can’t reach my brain. Is Ollama running (or the i
 async function ask(text) {
   text = String(text ?? $('input').value).trim();
   if (!text || busy) return;
+  // You come first: an agent working in the background steps aside (it stops after its current step and tries again later).
+  if (typeof Agents !== 'undefined' && Agents.running()) Agents.yield();
   $('input').value = ''; grow(); $('chips').replaceChildren();
   say('me', text);
   const controller = new AbortController(); busy = controller;
@@ -236,6 +238,7 @@ $('keySave').addEventListener('click', async () => {
   showSettings(); refreshStatus();
 });
 async function showSettings() {
+  if (typeof Agents !== 'undefined') Agents.hide();
   Look.render($('lookBox'));
   $('settings').classList.remove('hidden'); $('log').classList.add('hidden'); $('ask').classList.add('hidden'); $('chips').classList.add('hidden');
   renderProviders();

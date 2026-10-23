@@ -116,6 +116,7 @@ async function runSteps(key, task, ui, { models, signal }) {
     if (signal.aborted) throw new Error('stopped');
     if (needLook) { await wait(600); await look(messages); needLook = false; }
     const r = await AI.chat({ model: models[key], messages, tools, signal });
+    if (signal.aborted) throw new Error('stopped');   // stopped while the AI was answering
     if (!r.toolCalls.length) {
       // Small local AIs like to answer from memory; helpers that must look things up get sent to their tools once.
       if (step === 0 && h.mustLook) { messages.push({ role: 'assistant', content: r.content || '' }, { role: 'user', content: 'Don’t answer from memory. Do the task with your tools first (start now with a tool call), then summarize.' }); continue; }
@@ -157,6 +158,7 @@ const Team = {
     for (let round = 0; round < 6; round++) {
       if (signal.aborted) throw new Error('stopped');
       const r = await AI.chat({ model: models.lead, messages, tools: LEAD_TOOLS, signal });
+      if (signal.aborted) throw new Error('stopped');   // stopped while the AI was answering
       if (!r.toolCalls.length) {
         const answer = r.content.trim() || 'All done.';
         this.history.push({ role: 'user', content: text }, { role: 'assistant', content: answer });

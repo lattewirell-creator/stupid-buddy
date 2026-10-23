@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <!-- The Stupid Buddy: the ball on your desktop (closed) and the team panel (open). Logic: ai.js (the local AI),
-     team.js (Buddy and the helpers), app.js (this window). -->
+     team.js (Buddy and the helpers), app.js (this window), agents.js (your own agents and what you taught Buddy). -->
 <body class="closed">
   <button id="ball" class="ball big" aria-label="Open Buddy"><i></i><i></i><span id="ballDot"></span></button>
 
@@ -15,12 +15,15 @@
     <header class="head">
       <span id="headBall" class="ball"><i></i><i></i></span>
       <div class="who"><div class="name serif">Buddy</div><div id="status" class="status">Waking up…</div></div>
+      <button id="agentsBtn" class="chip">Agents</button>
       <button id="newBtn" class="chip">New chat</button>
       <button id="setBtn" class="icon" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg></button>
       <button id="closeBtn" class="icon" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </header>
 
     <section id="log"></section>
+
+    <section id="agents" class="hidden"></section>
 
     <section id="settings" class="hidden">
       <h2 class="serif">Settings</h2>
@@ -68,6 +71,7 @@
 <script src="look.js"></script>
 <script src="ball3d.js"></script>
 <script src="app.js"></script>
+<script src="agents.js"></script>
 <script type="module" src="buddy3d.js"></script>
 </body>
 </html>

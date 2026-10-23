@@ -68,6 +68,7 @@ pub fn act(op: &str, m: &Map<String, Value>, s: &State) -> Result<Value, String>
 
 /// Is Esc held down right now? (polled while Hands Buddy works)
 pub fn esc_down() -> bool { imp::esc_down() }
+pub use imp::{focused_is_password, key_hit, snap};
 
 #[cfg(windows)]
 mod imp {
@@ -79,6 +80,31 @@ mod imp {
 
     /// The main screen as a JPEG, at most 1280 pixels wide: (base64, width, height, scale, left, top).
     pub fn shot() -> Result<(String, u32, u32, f64, i32, i32), String> {
+        let (b64, w, h, scale) = snap(1280, None)?;
+        Ok((b64, w, h, scale, 0, 0))
+    }
+    /// The main screen as a JPEG at most `max_w` wide, with a ring drawn where the pointer was (screen pixels), if given.
+    pub fn snap(max_w: u32, mark: Option<(i32, i32)>) -> Result<(String, u32, u32, f64), String> {
+        let img = capture()?;
+        let (w, h) = img.dimensions();
+        let scale = (max_w as f64 / w as f64).min(1.0);
+        let (nw, nh) = (((w as f64) * scale).round() as u32, ((h as f64) * scale).round() as u32);
+        let mut img = if scale < 1.0 { image::imageops::resize(&img, nw, nh, image::imageops::FilterType::Triangle) } else { img };
+        if let Some((x, y)) = mark {
+            let (cx, cy) = ((x as f64 * scale) as i64, (y as f64 * scale) as i64);
+            for a in 0..360 {
+                let t = (a as f64).to_radians();
+                for r in [11.0, 12.0, 13.0] {
+                    let (px, py) = (cx + (t.cos() * r) as i64, cy + (t.sin() * r) as i64);
+                    if px >= 0 && py >= 0 && (px as u32) < nw && (py as u32) < nh { img.put_pixel(px as u32, py as u32, image::Rgb([230, 40, 40])); }
+                }
+            }
+        }
+        let mut jpg = vec![];
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpg, 60).encode_image(&img).map_err(|e| e.to_string())?;
+        Ok((base64::engine::general_purpose::STANDARD.encode(jpg), nw, nh, scale))
+    }
+    fn capture() -> Result<image::RgbImage, String> {
         unsafe {
             let (w, h) = (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
             if w <= 0 || h <= 0 { return Err("no screen".into()); }
@@ -102,15 +128,11 @@ mod imp {
             ReleaseDC(std::ptr::null_mut(), screen);
             if lines == 0 { return Err("I couldn’t see the screen.".into()); }
             let rgb: Vec<u8> = bgra.chunks_exact(4).flat_map(|p| [p[2], p[1], p[0]]).collect();
-            let img = image::RgbImage::from_raw(w as u32, h as u32, rgb).ok_or("no picture")?;
-            let scale = (1280.0 / w as f64).min(1.0);
-            let (nw, nh) = (((w as f64) * scale).round() as u32, ((h as f64) * scale).round() as u32);
-            let img = if scale < 1.0 { image::imageops::resize(&img, nw, nh, image::imageops::FilterType::Triangle) } else { img };
-            let mut jpg = vec![];
-            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpg, 60).encode_image(&img).map_err(|e| e.to_string())?;
-            Ok((base64::engine::general_purpose::STANDARD.encode(jpg), nw, nh, scale, 0, 0))
+            image::RgbImage::from_raw(w as u32, h as u32, rgb).ok_or_else(|| "no picture".to_string())
         }
     }
+    /// Is this key (a virtual-key code) down now, or was it pressed since the last time we asked?
+    pub fn key_hit(vk: i32) -> bool { unsafe { (GetAsyncKeyState(vk) as u16 & 0x8001) != 0 } }
 
     fn send(inputs: &[INPUT]) { unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32); } }
     fn mouse(flags: u32, data: i32) -> INPUT {
@@ -202,6 +224,8 @@ mod imp {
 mod imp {
     const NO: &str = "Hands Buddy in this build only works on Windows.";
     pub fn shot() -> Result<(String, u32, u32, f64, i32, i32), String> { Err(NO.into()) }
+    pub fn snap(_max_w: u32, _mark: Option<(i32, i32)>) -> Result<(String, u32, u32, f64), String> { Err(NO.into()) }
+    pub fn key_hit(_vk: i32) -> bool { false }
     pub fn click(_x: i32, _y: i32, _right: bool, _times: u32) {}
     pub fn scroll(_x: i32, _y: i32, _lines: i32) {}
     pub fn type_text(_text: &str) {}
