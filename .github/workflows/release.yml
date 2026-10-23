@@ -55,3 +55,23 @@ jobs:
           gh release download -R lattewirell-creator/stupid-buddy -p 'The.Stupid.Buddy.Mac.zip' -p '*-android.apk' -D carry || echo "Nothing to bring along from the previous release." >&2
           setup="windows/dist/StupidBuddy-${{ steps.v.outputs.version }}-windows-setup.exe"
           gh release create "${{ steps.v.outputs.tag }}" -R lattewirell-creator/stupid-buddy --target "$GITHUB_SHA" --title "The Stupid Buddy ${{ steps.v.outputs.tag }}" --notes "$NOTES" "$setup" "$setup.sig" carry/*
+
+  # The Linux package for the same version, attached to the release just published (Stupid OS installs and updates
+  # Buddy from it). A release made by this workflow doesn't start linux.yml, so it's built here.
+  linux:
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libgtk-3-dev libdbus-1-dev pkg-config imagemagick
+          rustup update stable && rustup default stable
+          cargo install cargo-deb --locked
+      - run: linux/build.sh
+      - name: Attach to the release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' windows/Cargo.toml | head -1)
+          gh release upload "v$version" dist/StupidBuddy-*-linux-amd64.deb --clobber -R "${{ github.repository }}"
