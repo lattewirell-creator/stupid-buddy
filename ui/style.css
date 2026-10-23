@@ -63,7 +63,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 body.closed #ball { display: block; }
 body.closed #panel { display: none; }
 #ballDot { position: absolute; right: 2px; top: 2px; width: 16px; height: 16px; border-radius: 50%; background: #3B3426; border: 2.5px solid var(--bg); display: none; }
-body.busy #ballDot { display: block; animation: pulse 1s ease-in-out infinite; }
+body.busy #ballDot, body.agent-busy #ballDot { display: block; animation: pulse 1s ease-in-out infinite; }
+body.unread #ballDot { display: block; background: var(--accent); }   /* an agent left something for you */
 @keyframes pulse { 50% { opacity: .35; } }
 
 /* ---------------- the panel ---------------- */
@@ -185,3 +186,43 @@ body.closed #ball { animation: ballIn .24s cubic-bezier(.2, .9, .25, 1.25); }
 @keyframes ballIn { from { transform: scale(.55); opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { #panel, body.closing #panel { transition: opacity .15s ease; } body.opening #panel, body.closing #panel { transform: none; } body.closed #ball { animation: none; } }
 html.android #panel { transition: none; transform: none; }
+
+/* ---------------- your agents (agents.js) ---------------- */
+#agents { flex: 1; overflow-y: auto; padding: 16px 18px 20px; user-select: text; display: flex; flex-direction: column; gap: 10px; }
+#agents h2 { font-size: 26px; font-weight: 400; margin: 0; }
+#agents .intro { color: var(--text-2); font-size: 13.5px; line-height: 1.45; margin: 0; }
+#agents .empty { color: var(--muted); font-size: 13px; padding: 14px; border: 1px dashed var(--line); border-radius: 16px; text-align: center; }
+#agents .note { align-self: stretch; }
+#agents .note.left, #agents .group .note { text-align: left; padding: 0 0 8px; }
+#agents .group { margin: 8px 0 0; }
+#agents .primary { margin-top: 2px; }
+.agent { padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; animation: pop .2s var(--ease); }
+.agent.off { opacity: .65; }
+.agent-head { display: flex; align-items: center; gap: 10px; }
+.agent-head .ball { width: 30px; height: 30px; }
+.agent .title { font-weight: 600; font-size: 14px; }
+.agent small { display: block; color: var(--muted); font-size: 12.5px; }
+.agent-meta { color: var(--text-2); font-size: 12.5px; }
+.agent-run { border-radius: 12px; background: var(--surface-2); padding: 8px 10px; font-size: 13px; }
+.agent-run-head { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+.agent-run.failed .agent-run-head { color: var(--accent); }
+.agent-run.running .agent-run-head::after { content: ' •••'; letter-spacing: 2px; }
+.agent-answer { max-height: 160px; overflow-y: auto; line-height: 1.45; }
+.agent-answer p { margin: 0 0 6px; } .agent-answer p:last-child { margin: 0; }
+.agent-answer ul, .agent-answer ol { margin: 2px 0 6px; padding-left: 18px; }
+.agent-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip:disabled { opacity: .5; }
+.chip.danger { color: var(--accent); }
+.chip.teach { margin-top: 8px; color: #4F78B5; border-color: color-mix(in srgb, #4F78B5 40%, var(--line)); }
+.agent-form { display: flex; flex-direction: column; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field .label { margin: 0; }
+.field input, .field textarea { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; outline: 0; resize: vertical; line-height: 1.4; }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+.field select { max-width: none; }
+.when { display: flex; gap: 8px; }
+.when select { flex: 1; }
+.when input { width: 110px; }
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 -3px 6px rgba(0,0,0,.15); }
+.swatch.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text-2); }

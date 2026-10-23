@@ -116,6 +116,7 @@ async function runSteps(key, task, ui, { models, signal }) {
     if (signal.aborted) throw new Error('stopped');
     if (needLook) { await wait(600); await look(messages); needLook = false; }
     const r = await AI.chat({ model: models[key], messages, tools, signal });
+    if (signal.aborted) throw new Error('stopped');   // stopped while the AI was answering
     if (!r.toolCalls.length) {
       // Small local AIs like to answer from memory; helpers that must look things up get sent to their tools once.
       if (step === 0 && h.mustLook) { messages.push({ role: 'assistant', content: r.content || '' }, { role: 'user', content: 'Don’t answer from memory. Do the task with your tools first (start now with a tool call), then summarize.' }); continue; }
@@ -149,14 +150,16 @@ const Team = {
    * You ask; Buddy answers, handing parts to helpers when it helps.
    * ui: { job(key, task) → { step(text, err), done(summary) }, typing(text) }. Returns Buddy's reply.
    */
-  async ask(text, ui, { models, name = 'Buddy', persona = '', signal }) {
+  async ask(text, ui, { models, name = 'Buddy', persona = '', signal, without = [] }) {
+    const leadTools = LEAD_TOOLS.filter((t) => !without.includes(t.function.name.replace(/^ask_/, '')));
     const sys = `You are ${name}, a helper who lives on the user's ${DEVICE === 'phone' ? 'phone' : DEVICE + ' desktop'}. ${persona}\nYou lead a small team:\n` +
-      Object.values(HELPERS).map((h) => `- ${h.name}: ${h.job}`).join('\n') +
+      Object.entries(HELPERS).filter(([k]) => !without.includes(k)).map(([, h]) => `- ${h.name}: ${h.job}`).join('\n') +
       `\nFor chat and quick questions, just answer. For real work, give it to the right helper with its ask_ tool. Give one helper the user's whole request about its area in ONE task, in the user's own words (never guess file names; the helper looks them up). Use several helpers only when the request really has different kinds of work (for example: find facts on the web, then write a document). Then tell the user in a few friendly sentences what was done, and include any text a helper wrote for them (like an email) in full. Don't invent results: only report what helpers told you. Answer in the user's language. Keep it short.\n${await context()}`;
     const messages = [{ role: 'system', content: sys }, ...this.history.slice(-12), { role: 'user', content: text }];
     for (let round = 0; round < 6; round++) {
       if (signal.aborted) throw new Error('stopped');
-      const r = await AI.chat({ model: models.lead, messages, tools: LEAD_TOOLS, signal });
+      const r = await AI.chat({ model: models.lead, messages, tools: leadTools, signal });
+      if (signal.aborted) throw new Error('stopped');   // stopped while the AI was answering
       if (!r.toolCalls.length) {
         const answer = r.content.trim() || 'All done.';
         this.history.push({ role: 'user', content: text }, { role: 'assistant', content: answer });
@@ -165,7 +168,7 @@ const Team = {
       messages.push({ role: 'assistant', content: r.content || '', tool_calls: r.toolCalls.map((c) => ({ id: c.id, function: { name: c.name, arguments: c.args } })) });
       for (const c of r.toolCalls) {
         const key = String(c.name || '').replace(/^ask_/, '');
-        if (!HELPERS[key]) { messages.push({ role: 'tool', tool_call_id: c.id, tool_name: c.name, content: 'No such helper.' }); continue; }
+        if (!HELPERS[key] || without.includes(key)) { messages.push({ role: 'tool', tool_call_id: c.id, tool_name: c.name, content: 'No such helper.' }); continue; }
         const task = String((c.args && c.args.task) || text);
         const job = ui.job(key, task);
         let result;

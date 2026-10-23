@@ -9,6 +9,7 @@ mod hands;
 mod physics;
 mod store;
 mod sys;
+mod teach;
 mod tools;
 mod update;
 
@@ -40,6 +41,9 @@ pub struct App {
     hands: hands::State,
     banner: Option<(Window, WebView)>,
     want_banner: bool,
+    /// What the bar at the top says: Hands Buddy at work, or Buddy watching you teach it a task.
+    banner_text: &'static str,
+    teach: teach::Recorder,
     exit: bool,
 }
 
@@ -124,6 +128,7 @@ impl App {
     /// Hands Buddy may work: the red bar, clicks pass through Buddy, Buddy hides from its screenshots, Esc stops.
     fn hands_on(&mut self) {
         self.hands.active.store(true, Ordering::SeqCst);
+        self.banner = None; self.banner_text = HANDS_BAR;
         self.want_banner = true;
         let _ = self.window.set_ignore_cursor_events(true);
         sys::hide_from_capture(self.hwnd(), true);
@@ -137,6 +142,24 @@ impl App {
                 std::thread::sleep(Duration::from_millis(40));
             }
         });
+    }
+    /// Teaching: the blue bar, clicks pass through Buddy, Buddy keeps out of the screenshots; the page gets the steps.
+    fn teach_on(&mut self, id: i64) {
+        let p = self.proxy.clone();
+        let started = self.teach.start(move |steps| {
+            let _ = p.send_event(Ev::Run(Box::new(move |app| { app.teach_off(); app.emit("teach:done", Value::Array(steps)); })));
+        });
+        if let Err(e) = started { return self.reply(id, Err(e)); }
+        self.banner = None; self.banner_text = TEACH_BAR; self.want_banner = true;
+        let _ = self.window.set_ignore_cursor_events(true);
+        sys::hide_from_capture(self.hwnd(), true);
+        self.reply(id, Ok(json!(true)));
+    }
+    fn teach_off(&mut self) {
+        self.teach.stop();
+        self.want_banner = false; self.banner = None;
+        let _ = self.window.set_ignore_cursor_events(false);
+        sys::hide_from_capture(self.hwnd(), false);
     }
     fn hands_off(&mut self) {
         self.hands.active.store(false, Ordering::SeqCst);
@@ -188,7 +211,7 @@ fn main() {
         .build(&window).expect("webview");
 
     let mut app = App { proxy: proxy.clone(), window, view, physics: physics::Physics::new(), ticking: Arc::new(AtomicBool::new(false)),
-        hands: hands::State::default(), banner: None, want_banner: false, exit: false };
+        hands: hands::State::default(), banner: None, want_banner: false, banner_text: HANDS_BAR, teach: teach::Recorder::default(), exit: false };
     self_tests(&app);
     // Updates: a first check shortly after start, then every 12 hours (update.rs skips it if it checked recently).
     if cfg!(windows) && std::env::var("STUPID_BUDDY_SELFTEST").is_err() && std::env::var("STUPID_BUDDY_SHOWCASE").is_err() {
@@ -230,14 +253,18 @@ fn main() {
             Event::WindowEvent { event: WindowEvent::CloseRequested, window_id, .. } if window_id == app.window.id() => app.exit = true,
             _ => {}
         }
-        if app.want_banner && app.banner.is_none() { app.banner = Some(banner(target)); }
+        if app.want_banner && app.banner.is_none() { app.banner = Some(banner(target, app.banner_text)); }
         if app.exit { app.hands_off(); *flow = ControlFlow::Exit; }
     });
 }
 
-/// The red bar at the top of the screen while Hands Buddy works. Clicks go through it and screenshots skip it.
-fn banner(target: &EventLoopWindowTarget<Ev>) -> (Window, WebView) {
-    let mut wb = WindowBuilder::new().with_title("Buddy is using your computer").with_inner_size(LogicalSize::new(430.0, 34.0))
+/// The bar at the top of the screen while Hands Buddy works (red) or Buddy watches you teach it (blue). Clicks go
+/// through it and screenshots skip it.
+const HANDS_BAR: &str = "<div style=\"background:rgba(214,77,61,.96)\">Buddy is using your computer · press Esc to stop</div>";
+const TEACH_BAR: &str = "<div style=\"background:rgba(79,120,181,.96)\">Buddy is watching · do the task, then press Esc</div>";
+fn banner(target: &EventLoopWindowTarget<Ev>, text: &str) -> (Window, WebView) {
+    let title = if text == TEACH_BAR { "Buddy is watching" } else { "Buddy is using your computer" };
+    let mut wb = WindowBuilder::new().with_title(title).with_inner_size(LogicalSize::new(430.0, 34.0))
         .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_focused(false);
     #[cfg(windows)] { use tao::platform::windows::WindowBuilderExtWindows; wb = wb.with_skip_taskbar(true).with_undecorated_shadow(false); }
     let w = wb.build(target).expect("banner");
@@ -248,7 +275,7 @@ fn banner(target: &EventLoopWindowTarget<Ev>) -> (Window, WebView) {
     // Screenshots skip the bar, except in the showcase test, where the screenshots are the point.
     if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(sys::hwnd(&w), true); }
     let v = WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0))
-        .with_html(r#"<!doctype html><meta charset="utf-8"><body style="margin:0;background:transparent;overflow:hidden"><div style="height:34px;border-radius:17px;background:rgba(214,77,61,.96);color:#fff;font:600 13px 'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center">Buddy is using your computer · press Esc to stop</div>"#)
+        .with_html(format!(r#"<!doctype html><meta charset="utf-8"><style>div{{height:34px;border-radius:17px;color:#fff;font:600 13px 'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center}}</style><body style="margin:0;background:transparent;overflow:hidden">{text}"#))
         .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:"))
         .build(&w).expect("banner view");
     (w, v)
@@ -291,6 +318,7 @@ fn handle(app: &mut App, body: &str) {
         "update.version" => app.reply(id, Ok(json!(update::VERSION))),
         "hands.permissions" | "hands.askPermissions" => app.reply(id, Ok(json!({ "screen": true, "control": true }))),
         "hands.start" => {
+            if app.teach.on.load(Ordering::SeqCst) { return app.reply(id, Err("Buddy is watching you teach it a task right now.".into())); }
             let task = m.get("task").and_then(Value::as_str).unwrap_or("this task").to_string();
             let p = app.proxy.clone();
             std::thread::spawn(move || {
@@ -302,6 +330,8 @@ fn handle(app: &mut App, body: &str) {
             });
         }
         "hands.stop" => { app.hands_off(); app.reply(id, Ok(json!(true))) }
+        "teach.start" => app.teach_on(id),
+        "teach.stop" => { app.teach.stop(); app.reply(id, Ok(json!(true))) }
         op if op.starts_with("hands.") => { let (s, op) = (app.hands.clone(), op.to_string()); app.work(id, move || hands::act(&op, &m, &s)) }
         op if op.starts_with("keys.") || op == "ai.request" || op == "ollama.request" => { let op = op.to_string(); app.work(id, move || cloud::handle(&op, &m)) }
         op => { let op = op.to_string(); app.work(id, move || tools::handle(&op, &m)) }
