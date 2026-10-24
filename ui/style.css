@@ -258,3 +258,29 @@ body.hello.closed #ball { animation: hello .7s cubic-bezier(.2, .9, .25, 1.35); 
 @media (prefers-reduced-motion: reduce) { #bubble.pop, body.hello.closed #ball { animation: none; } }
 .toggle { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-2); }
 .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+/* ---------------- Retro 90s (Settings → Era) and pixel art (Settings → Pixel art) ---------------- */
+/* Our own take on an old desktop: grey bevelled buttons, a navy title bar, square corners and a pale yellow balloon. */
+body.retro {
+  --bg: #D4D0C8; --surface: #FFFFFF; --surface-2: #E9E6DF; --hover: #C9C5BC; --line: #808080;
+  --text: #000; --text-2: #1A1A1A; --muted: #4A4A4A; --accent: #000080; --accent-soft: rgba(0,0,128,.12);
+  --sans: Tahoma, Verdana, 'Segoe UI', sans-serif; --serif: Tahoma, Verdana, sans-serif;
+  color-scheme: light; font-size: 13px;
+}
+body.retro #panel { border-radius: 0; border: 2px solid; border-color: #fff #404040 #404040 #fff; box-shadow: 1px 1px 0 #000; }
+body.retro .head { background: linear-gradient(90deg, #000080, #1084D0); color: #fff; border-bottom: 0; padding-top: 8px; padding-bottom: 8px; }
+body.retro .head * { color: #fff; }
+body.retro .head .ball { box-shadow: none; }
+body.retro .msg { border-radius: 0; animation: none; }
+body.retro .msg.bot { background: #fff; border: 1px solid #808080; }
+body.retro .msg.me { background: #000080; color: #fff; }
+body.retro .chip, body.retro .note button, body.retro button.primary, body.retro .bubble-acts .chip {
+  border-radius: 0; background: #D4D0C8; color: #000; border: 2px solid; border-color: #fff #404040 #404040 #fff; box-shadow: 1px 1px 0 #000; font-weight: 400;
+}
+body.retro .chip:active, body.retro .bubble-acts .chip:active { border-color: #404040 #fff #fff #404040; }
+body.retro .chip.on, body.retro .chip.primary-chip { font-weight: 700; }
+body.retro textarea, body.retro input:not([type=checkbox]):not([type=color]) { border-radius: 0 !important; background: #fff; border: 2px solid; border-color: #404040 #fff #fff #404040; }
+body.retro #bubble { background: #FFFFE1; color: #000; border: 1px solid #000; border-radius: 4px; box-shadow: 2px 2px 0 rgba(0,0,0,.4); font: 12.5px/1.4 Tahoma, Verdana, sans-serif; }
+body.retro #bubble.pop { animation: none; }   /* 90s balloons just appear */
+/* Pixel art: an emoji hat drawn on a 16×16 grid (look.js), blown up without smoothing. */
+.ball .hat.pix { width: 1em; height: 1em; background: center / contain no-repeat; image-rendering: pixelated; }

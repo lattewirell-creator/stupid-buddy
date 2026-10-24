@@ -33,6 +33,7 @@ const Ball3D = (() => {
     // An emoji hat (sun hat, flower, bow…) sits on top as a picture: it needs the same room above as a 3D one.
     if (L.hat !== 'none') b3.setFraming(1.62 * fit, 0.5); else b3.setFraming(2 * fit, 0.1);
     el.classList.toggle('b3d-hat', hat !== 'none');   // the 3D Buddy wears it; hide the emoji one
+    b3.setPixel(L.pixel ? (el.id === 'ball' ? 4 : 3) : 0);   // pixel art: one dot is 4 points on the desktop, 3 in the preview
   }
   /** Buddy's mood from app.js (happy, think, work, sleepy…). */
   function state(s) {
