@@ -258,6 +258,8 @@ body.hello.closed #ball { animation: hello .7s cubic-bezier(.2, .9, .25, 1.35); 
 @media (prefers-reduced-motion: reduce) { #bubble.pop, body.hello.closed #ball { animation: none; } }
 .toggle { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-2); }
 .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+#agents .always { margin: 4px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+#agents .always.warn { background: var(--accent-soft); color: var(--text); }   /* scheduled agents, but Buddy doesn't start by himself */
 
 /* ---------------- Retro 90s (Settings → Era) and pixel art (Settings → Pixel art) ---------------- */
 /* Our own take on an old desktop: grey bevelled buttons, a navy title bar, square corners and a pale yellow balloon. */
