@@ -61,6 +61,12 @@ const Agents = (() => {
       if (rec.status === 'stopped' && why === 'schedule') agent.next = Date.now() + 10 * 60e3;   // you needed Buddy; try again soon
       else agent.next = nextRun(agent);
       rec.unread = rec.status !== 'stopped'; save(); refresh(); badge();
+      // Buddy tells you, in his speech bubble (or the chat), when one of your agents has finished.
+      if (rec.status !== 'stopped' && why === 'schedule' && typeof Speech !== 'undefined' && !shown()) {
+        const first = String(rec.answer || '').replace(/[#*_`>]/g, '').split(/\n+/).find((l) => l.trim()) || '';
+        const line = rec.status === 'done' ? `${agent.name} is done ✓ ${first.length > 70 ? first.slice(0, 68) + '…' : first}` : `${agent.name} couldn’t finish. Want a look?`;
+        Speech.say(line.trim(), { ms: 20000, actions: [{ label: 'Show me', primary: true, fn: async () => { await Speech.hush(); if (document.body.classList.contains('closed')) await open(); show(); } }] });
+      }
       settle();
     }
     return true;
@@ -99,6 +105,19 @@ const Agents = (() => {
     if (editing) return renderForm(box);
     box.appendChild(el('p', 'intro', 'Little Buddies with one job each. They work on this ' + DEVICE + ' while you do other things, and leave what they did here.'));
     if (!agents.length) box.appendChild(el('div', 'empty', 'No agents yet. Make one: a name, a job, and when it should run.'));
+    // Always on: Buddy starts with the computer, so a 08:00 agent runs at 08:00 even if you never opened him.
+    const always = el('label', 'toggle always hidden'); const box2 = el('input'); box2.type = 'checkbox';
+    always.append(box2, el('span', null, 'Start Buddy when I log in, so agents run on time'));
+    box.appendChild(always);
+    Native.call('autostart').then((on) => {
+      if (typeof on !== 'boolean') return;   // not on this computer
+      box2.checked = on; always.classList.remove('hidden');
+      always.classList.toggle('warn', !on && agents.some((a) => a.on && a.when !== 'off'));
+    }).catch(() => {});
+    box2.addEventListener('change', () => {
+      Native.call('autostart', { on: box2.checked }).then((on) => { box2.checked = on; always.classList.remove('warn'); })
+        .catch((e) => { box2.checked = !box2.checked; note2(e.message); });
+    });
     for (const a of agents) box.appendChild(card(a));
     const add = el('button', 'primary', '+ New agent'); add.addEventListener('click', () => { editing = { id: null, name: '', job: '', task: '', when: 'daily', time: '08:00', color: COLORS[agents.length % COLORS.length], skill: '', on: true }; render(); });
     box.appendChild(add);

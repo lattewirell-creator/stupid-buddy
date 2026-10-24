@@ -5,6 +5,7 @@
 // Linux also has System Buddy (system.rs), voice (voice.rs) and summoning from anywhere (instance.rs).
 // The page talks to it exactly as on the Mac: window.webkit.messageHandlers.buddy.postMessage({id, op, …}).
 #![cfg_attr(windows, windows_subsystem = "windows")]
+mod autostart;
 mod cloud;
 mod hands;
 #[cfg(target_os = "linux")]
@@ -384,6 +385,11 @@ fn handle(app: &mut App, body: &str) {
             });
         }
         "update.later" => { update::snooze(3); app.reply(id, Ok(json!(true))) }
+        // Start with the computer: {} asks (null where it can't), {on} changes it.
+        "autostart" => match m.get("on").and_then(Value::as_bool) {
+            Some(on) => app.reply(id, autostart::set(on).map(|v| json!(v))),
+            None => app.reply(id, Ok(json!(autostart::get()))),
+        },
         "update.version" => app.reply(id, Ok(json!(update::VERSION))),
         op if op.starts_with("hands.") && !hands::AVAILABLE => app.reply(id, Err(hands::UNAVAILABLE.into())),
         "hands.permissions" | "hands.askPermissions" => app.reply(id, Ok(json!({ "screen": true, "control": true }))),
