@@ -471,29 +471,28 @@ footer .grow { flex: 1; }
   talk('Hi! Throw me, or click me for eyes.', 3000);
   wake();
 })();
-// The download button points straight at the newest release's zip.
+// The download buttons point straight at the newest release's files.
 fetch('https://api.github.com/repos/lattewirell-creator/stupid-buddy/releases/latest').then((r) => (r.ok ? r.json() : null)).then((rel) => {
   if (!rel) return;
   const zip = (rel.assets || []).find((a) => /\.zip$/.test(a.name)), apk = (rel.assets || []).find((a) => /android\.apk$/.test(a.name));
   const win = (rel.assets || []).find((a) => /windows-setup\.exe$/.test(a.name)), deb = (rel.assets || []).find((a) => /-linux-amd64\.deb$/.test(a.name));
-  if (deb) {
-    document.querySelectorAll('[data-deb]').forEach((a) => { a.href = deb.browser_download_url; });
-    document.getElementById('debSize').textContent = Math.max(0.1, Math.round(deb.size / 104857.6) / 10) + ' MB';
-    // On a Linux desktop, the big button downloads the Linux version
-    const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
-    if (/Linux/i.test(p) && !/Android/i.test(navigator.userAgent)) {
-      const big = document.querySelector('.cta[data-dl]');
-      big.removeAttribute('data-dl'); big.href = deb.browser_download_url;
-      big.replaceChildren('Download for Linux ', Object.assign(document.createElement('span'), { textContent: document.getElementById('debSize').textContent }));
-      document.querySelector('[data-deb]').remove();
-    }
-  }
-  if (win) { document.querySelectorAll('[data-win]').forEach((a) => { a.href = win.browser_download_url; }); document.getElementById('winSize').textContent = Math.max(0.1, Math.round(win.size / 104857.6) / 10) + ' MB'; }
-  if (apk) { document.querySelectorAll('[data-apk]').forEach((a) => { a.href = apk.browser_download_url; }); document.getElementById('apkSize').textContent = Math.max(0.1, Math.round(apk.size / 104857.6) / 10) + ' MB'; }
+  const mb = (x) => Math.max(0.1, Math.round(x.size / 104857.6) / 10) + ' MB';
+  if (deb) { document.querySelectorAll('[data-deb]').forEach((a) => { a.href = deb.browser_download_url; }); document.getElementById('debSize').textContent = mb(deb); }
+  if (win) { document.querySelectorAll('[data-win]').forEach((a) => { a.href = win.browser_download_url; }); document.getElementById('winSize').textContent = mb(win); }
+  if (apk) { document.querySelectorAll('[data-apk]').forEach((a) => { a.href = apk.browser_download_url; }); document.getElementById('apkSize').textContent = mb(apk); }
   if (zip) {
     document.querySelectorAll('[data-dl]').forEach((a) => { a.href = zip.browser_download_url; });
     const dlSize = document.getElementById('dlSize');
     if (dlSize) dlSize.textContent = zip.size ? Math.max(1, Math.round(zip.size / 1048576 * 10) / 10) + ' MB' : '.zip';
+  }
+  // The big button downloads the version for the device you're on (Windows, Linux or Android); the others stay beside it.
+  const ua = navigator.userAgent, p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+  const mine = /Android/i.test(ua) ? ['apk', 'Android', apk] : /Win/i.test(p) ? ['win', 'Windows', win] : /Linux/i.test(p) ? ['deb', 'Linux', deb] : null;
+  if (mine && mine[2]) {
+    const [key, name] = mine, big = document.querySelector('.cta[data-dl]'), alt = document.querySelector(`.cta[data-${key}]`);
+    const mac = big.cloneNode(false); mac.className = 'cta alt'; mac.replaceChildren('Mac ', Object.assign(document.createElement('span'), { textContent: document.getElementById('dlSize').textContent }));
+    alt.className = 'cta'; alt.firstChild.textContent = 'Download for ' + name + ' ';
+    big.replaceWith(alt); alt.after(mac); mac.removeAttribute('data-dl');
   }
   const v = String(rel.tag_name || '').replace(/^v/, '');
   if (v) document.getElementById('ver').textContent = 'Version ' + v + ' · Free and open source';
