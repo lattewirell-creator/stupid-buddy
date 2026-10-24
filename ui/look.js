@@ -15,7 +15,7 @@ const Look = (() => {
     direct: ['To the point', 'short and direct, with no small talk'],
     teacher: ['Teacher', 'a patient teacher who explains things simply'],
   };
-  const DEFAULTS = { name: 'Buddy', three: true, color: 'clay', shape: 'ball', eyes: 'dot', mouth: 'none', hat: 'none', mood: 'friendly', custom: '', call: '' };
+  const DEFAULTS = { name: 'Buddy', three: true, era: 'modern', pixel: false, color: 'clay', shape: 'ball', eyes: 'dot', mouth: 'none', hat: 'none', mood: 'friendly', custom: '', call: '' };
 
   function get() {
     let saved = {};
@@ -23,6 +23,7 @@ const Look = (() => {
     const L = Object.assign({}, DEFAULTS, saved);
     if (!SHAPES[L.shape]) L.shape = 'ball';
     if (!EYES[L.eyes]) L.eyes = 'dot'; if (!MOUTHS[L.mouth]) L.mouth = 'none'; if (!HATS[L.hat]) L.hat = 'none'; if (!MOODS[L.mood]) L.mood = 'friendly';
+    if (L.era !== 'retro') L.era = 'modern'; L.pixel = L.pixel === true;
     if (!COLORS[L.color] && !/^#[0-9a-f]{6}$/i.test(L.color)) L.color = 'clay';
     L.name = String(L.name || '').trim().slice(0, 20) || 'Buddy';
     L.custom = String(L.custom || '').slice(0, 300); L.call = String(L.call || '').trim().slice(0, 30);
@@ -45,12 +46,31 @@ const Look = (() => {
     else { if (!mouth) { mouth = document.createElement('s'); b.appendChild(mouth); } mouth.className = 'mouth ' + L.mouth; }
     let hat = b.querySelector(':scope > .hat');
     if (L.hat === 'none') hat && hat.remove();
-    else { if (!hat) { hat = document.createElement('u'); hat.className = 'hat'; b.appendChild(hat); } hat.textContent = HATS[L.hat][0]; }
+    else {
+      if (!hat) { hat = document.createElement('u'); hat.className = 'hat'; b.appendChild(hat); }
+      const pix = L.pixel && pixelHat(HATS[L.hat][0]);
+      hat.textContent = pix ? '' : HATS[L.hat][0];
+      hat.classList.toggle('pix', !!pix); hat.style.backgroundImage = pix ? `url(${pix})` : '';
+    }
     b.classList.toggle('has-hat', L.hat !== 'none');
     if (typeof Ball3D !== 'undefined') Ball3D.sync(b);   // the 3D Buddy (ball3d.js), where it's on
   }
+  /** A hat emoji drawn on a 16×16 grid, for the pixel-art Buddy (blown up without smoothing by the CSS). */
+  const pixelHats = {};
+  function pixelHat(emoji) {
+    if (pixelHats[emoji]) return pixelHats[emoji];
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 16;
+      const g = c.getContext('2d'); g.font = '14px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(emoji, 8, 9);
+      return (pixelHats[emoji] = c.toDataURL());
+    } catch { return ''; }
+  }
   /** Everywhere Buddy shows: the ball on the desktop, the one in the header, a thrown one, the preview. */
   function apply() {
+    const L = get();
+    document.body.classList.toggle('retro', L.era === 'retro');   // the 90s desktop look (style.css)
+    document.body.classList.toggle('pixel', L.pixel);
     document.querySelectorAll('#ball, #headBall, .float-ball, .look-preview').forEach(dress);
     const n = name();
     document.querySelectorAll('.who .name').forEach((e) => { e.textContent = n; });
@@ -110,6 +130,14 @@ const Look = (() => {
       const t = chips({ on: ['🧊', '3D'], off: ['⚪', 'Flat'] }, L.three === false ? 'off' : 'on', 'three');
       t.querySelectorAll('.look-chip').forEach((c) => c.addEventListener('click', () => { save({ three: c.title === '3D' }); setTimeout(() => render(box)); }));
       row('Style', t);
+    }
+    // Retro: the speech bubble and this panel like a 90s desktop. Pixel: Buddy and his hats in pixel art (the 3D Buddy).
+    const era = chips({ modern: ['✨', 'Modern'], retro: ['💾', 'Retro 90s'] }, L.era, 'era');
+    row('Era', era);
+    if (three && L.three !== false) {
+      const px = chips({ off: ['🟠', 'Smooth'], on: ['👾', 'Pixel'] }, L.pixel ? 'on' : 'off', 'pixel');
+      px.querySelectorAll('.look-chip').forEach((c) => { c.addEventListener('click', () => save({ pixel: c.title === 'Pixel' })); });
+      row('Pixel art', px);
     }
     if (L.shape !== 'eye' && !(three && L.three !== false)) {   // the 3D Buddy has its own face
       row('Eyes', chips(EYES, L.eyes, 'eyes'));

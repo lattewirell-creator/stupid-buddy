@@ -368,10 +368,17 @@ export function createBuddy(container, { interactive = true, onClick = null, zoo
   function kick() { activeUntil = performance.now() + 2500; if (!raf && visible && !document.hidden && !paused) raf = requestAnimationFrame(tick); }
   // The browser can pause Buddy for a moment (e.g. while you scroll a page on a phone) so the page gets every frame.
   addEventListener('stupid-buddy-pause', (e) => { paused = !!e.detail; if (!paused) { lastBusy = performance.now(); kick(); } });
+  // Pixel art: draw Buddy on a small grid (one dot = `pixel` screen points) and let the browser blow it up without smoothing.
+  let pixel = 0;
   function resize() {
     const w = container.clientWidth || 110, h = container.clientHeight || 120;
-    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    if (pixel) { renderer.setPixelRatio(1); renderer.setSize(Math.max(8, Math.round(w / pixel)), Math.max(8, Math.round(h / pixel)), false); }
+    else { renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(w, h, false); }
+    renderer.domElement.style.imageRendering = pixel ? 'pixelated' : '';
+    camera.aspect = w / h; camera.updateProjectionMatrix();
   }
+  /** 0: smooth; otherwise the size of one pixel-art dot, in screen points. */
+  function setPixel(n) { pixel = n > 0 ? n : 0; resize(); kick(); }
   const ro = new ResizeObserver(() => { resize(); kick(); }); ro.observe(container);
   function tick(now) {
     raf = 0;
@@ -451,7 +458,7 @@ export function createBuddy(container, { interactive = true, onClick = null, zoo
   // A still picture of the character as it looks right now (used for the little face in the chat header).
   function snapshot() { if (!canvas.width || !canvas.height) return ''; renderer.render(scene, camera); return canvas.toDataURL('image/png'); }
   resize(); setLook({}); kick();
-  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas, land, snapshot, spinBy, setFraming };
+  return { setLook, setState, lookAt, poke, setVisible, destroy, canvas, land, snapshot, spinBy, setFraming, setPixel };
 }
 window.Buddy3D = { create: createBuddy };
 window.dispatchEvent(new Event('buddy3d-ready'));
