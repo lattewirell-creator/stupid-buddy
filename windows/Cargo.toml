@@ -1,6 +1,6 @@
 [package]
 name = "stupid-buddy"
-version = "0.9.5"
+version = "0.9.6"
 edition = "2021"
 description = "Buddy and a small team that does work for you"
 

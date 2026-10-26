@@ -57,7 +57,7 @@ const Agents = (() => {
     // Its own memory: the last things you told it and what it answered (not your chat with Buddy).
     const team = Object.create(Team); team.history = (agent.thread || []).slice(-12);
     try {
-      rec.answer = await team.ask(text, ui, { models, name: agent.name, persona: `You are one of the user's own agents, working on your own while they do other things. Your job: ${agent.job}`, signal: controller.signal,
+      rec.answer = await team.ask(text, ui, { models, name: agent.name, color: agent.color, persona: `You are one of the user's own agents, working on your own while they do other things. Your job: ${agent.job}`, signal: controller.signal,
         // Using the mouse and keyboard needs you there to say yes: on its own, only an agent following something you
         // taught it may (Run now is you being there).
         without: skill || why === 'now' ? [] : ['hands'] });
@@ -116,7 +116,15 @@ const Agents = (() => {
     { icon: '✍️', name: 'Writer Buddy', job: 'Drafts things for me', task: 'Draft a short, warm LinkedIn post about something I learned this week. Ask me nothing; make a good first draft I can edit.', when: 'off', time: '08:00' },
     { icon: '📊', name: 'Week Buddy', job: 'Sums up my week', task: 'Look at what I changed in Documents and Desktop this week and write a short summary of what I worked on, as bullet points.', when: 'daily', time: '16:00' },
   ];
-  let open_ = null;   // the agent whose page is open (its talk, what it's doing, what it did)
+  let open_ = null;
+  /** An agent's picture: a little screen-faced bot in its colour, with its emoji on a badge. */
+  const ICONS = ['☀️', '🧹', '🔎', '✍️', '📊', '📬', '🛒', '📅', '💡', '🎵', '🏃', '🧠'];
+  function avatar(a, size = 36) {
+    const b = el('span', 'bot-av'); b.style.setProperty('--c', a.color || COLORS[0]); b.style.setProperty('--s', size + 'px');
+    const face = el('span', 'bot-face'); face.append(el('i'), el('i')); b.appendChild(face);
+    if (a.icon) b.appendChild(el('span', 'bot-badge', a.icon));
+    return b;
+  }   // the agent whose page is open (its talk, what it's doing, what it did)
 
   function render() {
     if (!shown()) return;
@@ -125,11 +133,12 @@ const Agents = (() => {
     if (editing) { box.appendChild(el('h2', 'serif', editing.id ? 'Change ' + (editing.name || 'agent') : 'New agent')); return renderForm(box); }
     const a = open_ && agents.find((x) => x.id === open_);
     if (a) return renderAgent(box, a);
-    box.appendChild(el('h2', 'serif', 'Your agents'));
+    box.appendChild(el('h2', 'large', 'Agents'));
     box.appendChild(el('p', 'intro', 'Little Buddies with one job each. They work on this ' + DEVICE + ' while you do other things. Tap one to talk to it or see what it’s doing.'));
     // Always on: Buddy starts with the computer, so a 08:00 agent runs at 08:00 even if you never opened him.
-    const always = el('label', 'toggle always hidden'); const box2 = el('input'); box2.type = 'checkbox';
-    always.append(box2, el('span', null, 'Start Buddy when I log in, so agents run on time'));
+    const always = el('label', 'always hidden'); const box2 = el('input'); box2.type = 'checkbox'; box2.className = 'switch';
+    const at = el('span', 'always-text'); at.append(el('b', null, 'Always on'), el('small', null, 'Start Buddy when I log in, so agents run on time'));
+    always.append(at, box2);
     box.appendChild(always);
     Native.call('autostart').then((on) => {
       if (typeof on !== 'boolean') return;   // not on this computer
@@ -141,21 +150,21 @@ const Agents = (() => {
         .catch((e) => { box2.checked = !box2.checked; note2(e.message); });
     });
     // The board: every agent with how it's doing right now.
-    if (agents.length) {
-      const board = el('div', 'board');
-      for (const x of agents) board.appendChild(tile(x));
-      box.appendChild(board);
-    }
-    const add = el('button', 'primary', '+ New agent'); add.addEventListener('click', () => { editing = { id: null, name: '', job: '', task: '', when: 'daily', time: '08:00', color: COLORS[agents.length % COLORS.length], skill: '', on: true }; render(); });
-    box.appendChild(add);
+    const board = el('div', 'board');
+    for (const x of agents) board.appendChild(tile(x));
+    const add = el('button', 'tile add'); add.type = 'button';
+    add.append(el('span', 'add-plus', '+'), el('div', 'tile-name', 'New agent'), el('div', 'tile-job', 'Give it a name and a job'));
+    add.addEventListener('click', () => { editing = { id: null, name: '', job: '', task: '', when: 'daily', time: '08:00', color: COLORS[agents.length % COLORS.length], skill: '', on: true, icon: '' }; render(); });
+    board.appendChild(add);
+    box.appendChild(board);
     // Start from a ready-made one.
     const g0 = el('div', 'group'); g0.appendChild(el('div', 'label', agents.length ? 'Or start from one of these' : 'Start from one of these'));
     const tpl = el('div', 'templates');
     for (const t of TEMPLATES) {
       const b = el('button', 'template'); b.type = 'button';
       b.append(el('span', 'template-icon', t.icon), Object.assign(el('span', 'template-text'), {}));
-      b.lastChild.append(el('b', null, t.name), el('small', null, t.job));
-      b.addEventListener('click', () => { editing = Object.assign({ id: null, color: COLORS[agents.length % COLORS.length], skill: '', on: true }, t); delete editing.icon; render(); });
+      b.lastChild.append(el('b', null, t.name), el('small', null, t.job)); b.appendChild(el('span', 'chev', '›'));
+      b.addEventListener('click', () => { editing = Object.assign({ id: null, color: COLORS[agents.length % COLORS.length], skill: '', on: true }, t); render(); });
       tpl.appendChild(b);
     }
     g0.appendChild(tpl); box.appendChild(g0);
@@ -185,7 +194,7 @@ const Agents = (() => {
   function tile(a) {
     const [kind, text] = status(a);
     const t = el('button', 'tile ' + kind); t.type = 'button';
-    const ball = ballEl(a.color); if (kind === 'working') ball.classList.add('thinking');
+    const ball = avatar(a, 40); if (kind === 'working') ball.classList.add('thinking');
     const unread = runs.some((r) => r.agent === a.id && r.unread);
     const name = el('div', 'tile-name', a.name); if (unread) name.appendChild(el('i', 'tile-dot'));
     t.append(ball, name, el('div', 'tile-job', a.job), el('div', 'tile-status', text));
@@ -199,7 +208,7 @@ const Agents = (() => {
     const top = el('div', 'agent-top');
     const back = el('button', 'chip back', '‹ All agents'); back.addEventListener('click', () => { open_ = null; render(); });
     top.appendChild(back); box.appendChild(top);
-    const head = el('div', 'agent-head big'); head.appendChild(ballEl(a.color));
+    const head = el('div', 'agent-head big'); head.appendChild(avatar(a, 52));
     const t = el('div', 'grow'); t.append(el('div', 'title', a.name), el('small', null, a.job)); head.appendChild(t);
     const [kind, text] = status(a); head.appendChild(el('span', 'pill-status ' + kind, text));
     box.appendChild(head);
@@ -278,12 +287,15 @@ const Agents = (() => {
     const sw = el('div', 'swatches'); let color = a.color;
     for (const c of COLORS) { const b = el('button', 'swatch' + (c === color ? ' on' : '')); b.type = 'button'; b.style.background = c; b.addEventListener('click', () => { color = c; sw.querySelectorAll('.swatch').forEach((x) => x.classList.toggle('on', x === b)); }); sw.appendChild(b); }
     field('Colour', sw);
+    const ic = el('div', 'swatches icons'); let icon = a.icon || '';
+    for (const e of ['', ...ICONS]) { const b = el('button', 'icon-pick' + (e === icon ? ' on' : ''), e || '–'); b.type = 'button'; b.title = e ? 'Use ' + e : 'No badge'; b.addEventListener('click', () => { icon = e; ic.querySelectorAll('.icon-pick').forEach((x) => x.classList.toggle('on', x === b)); }); ic.appendChild(b); }
+    field('Badge', ic);
     const err = el('div', 'note left'); f.appendChild(err);
     const save1 = el('button', 'primary', a.id ? 'Save' : 'Make the agent'); save1.type = 'submit'; f.appendChild(save1);
     f.addEventListener('submit', (e) => {
       e.preventDefault();
       if (!name.value.trim() || !task.value.trim()) { err.textContent = 'Give it a name and something to do.'; return; }
-      const v = { name: name.value.trim().slice(0, 40), job: job.value.trim().slice(0, 160) || task.value.trim().slice(0, 160), task: task.value.trim().slice(0, 2000), when: when.value, time: time.value || '08:00', color, skill: skill.value || '' };
+      const v = { name: name.value.trim().slice(0, 40), job: job.value.trim().slice(0, 160) || task.value.trim().slice(0, 160), task: task.value.trim().slice(0, 2000), when: when.value, time: time.value || '08:00', color, icon, skill: skill.value || '' };
       let target = agents.find((x) => x.id === a.id);
       if (!target) { target = { id: uid(), on: true, last: null }; agents.push(target); }
       Object.assign(target, v); target.next = nextRun(target);

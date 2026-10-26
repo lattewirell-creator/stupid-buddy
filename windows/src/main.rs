@@ -53,7 +53,11 @@ pub struct App {
     want_banner: bool,
     last_cursor: Option<(i32, i32)>,
     /// What the bar at the top says: Hands Buddy at work, or Buddy watching you teach it a task.
-    banner_text: &'static str,
+    banner_text: String,
+    /// The bot's name tag next to the mouse while it works (Hands): where it clicks, with a ring.
+    pointer: Option<(Window, WebView)>,
+    want_pointer: bool,
+    who: (String, String),
     teach: teach::Recorder,
     exit: bool,
 }
@@ -164,8 +168,9 @@ impl App {
     /// Hands Buddy may work: the red bar, clicks pass through Buddy, Buddy hides from its screenshots, Esc stops.
     fn hands_on(&mut self) {
         self.hands.active.store(true, Ordering::SeqCst);
-        self.banner = None; self.banner_text = HANDS_BAR;
+        self.banner = None; self.banner_text = hands_bar(&self.who.0, &self.who.1);
         self.want_banner = true;
+        self.pointer = None; self.want_pointer = true;
         let _ = self.window.set_ignore_cursor_events(true);
         sys::hide_from_capture(&self.window, true);
         let (p, s) = (self.proxy.clone(), self.hands.clone());
@@ -186,7 +191,7 @@ impl App {
             let _ = p.send_event(Ev::Run(Box::new(move |app| { app.teach_off(); app.emit("teach:done", Value::Array(steps)); })));
         });
         if let Err(e) = started { return self.reply(id, Err(e)); }
-        self.banner = None; self.banner_text = TEACH_BAR; self.want_banner = true;
+        self.banner = None; self.banner_text = TEACH_BAR.to_string(); self.want_banner = true;
         let _ = self.window.set_ignore_cursor_events(true);
         sys::hide_from_capture(&self.window, true);
         self.reply(id, Ok(json!(true)));
@@ -201,8 +206,17 @@ impl App {
         self.hands.active.store(false, Ordering::SeqCst);
         self.want_banner = false;
         self.banner = None;
+        self.want_pointer = false; self.pointer = None;
         let _ = self.window.set_ignore_cursor_events(false);
         sys::hide_from_capture(&self.window, false);
+    }
+    /// Moves the bot's name tag to where it's about to click or scroll (screen pixels), with a ring.
+    fn point_at(&mut self, x: i32, y: i32) {
+        if let Some((w, v)) = &self.pointer {
+            let s = w.scale_factor();
+            w.set_outer_position(PhysicalPosition::new(x - (22.0 * s) as i32, y - (22.0 * s) as i32));
+            let _ = v.evaluate_script("ping()");
+        }
     }
 }
 
@@ -261,7 +275,7 @@ fn main() {
     let view = build_view(builder, &window);
 
     let mut app = App { proxy: proxy.clone(), window, view, physics: physics::Physics::new(), ticking: Arc::new(AtomicBool::new(false)),
-        hands: hands::State::default(), banner: None, want_banner: false, last_cursor: None, banner_text: HANDS_BAR, teach: teach::Recorder::default(), exit: false };
+        hands: hands::State::default(), banner: None, want_banner: false, last_cursor: None, banner_text: String::new(), pointer: None, want_pointer: false, who: (String::new(), String::new()), teach: teach::Recorder::default(), exit: false };
     self_tests(&app);
     #[cfg(target_os = "linux")]
     if !testing() {
@@ -299,17 +313,24 @@ fn main() {
             Event::WindowEvent { event: WindowEvent::CloseRequested, window_id, .. } if window_id == app.window.id() => app.exit = true,
             _ => {}
         }
-        if app.want_banner && app.banner.is_none() { app.banner = Some(banner(target, app.banner_text)); }
+        if app.want_banner && app.banner.is_none() { app.banner = Some(banner(target, &app.banner_text)); }
+        if app.want_pointer && app.pointer.is_none() { app.pointer = Some(pointer(target, &app.who.0, &app.who.1)); }
         if app.exit { app.hands_off(); *flow = ControlFlow::Exit; }
     });
 }
 
 /// The bar at the top of the screen while Hands Buddy works (red) or Buddy watches you teach it (blue). Clicks go
 /// through it and screenshots skip it.
-const HANDS_BAR: &str = "<div style=\"background:rgba(214,77,61,.96)\">Buddy is using your computer · press Esc to stop</div>";
+/// The red bar, or in the working bot's own colour with its name.
+fn hands_bar(who: &str, color: &str) -> String {
+    let who = if who.is_empty() { "Buddy".to_string() } else { html_escape(who) };
+    let bg = if color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit()) { color.to_string() } else { "rgba(214,77,61,.96)".into() };
+    format!("<div style=\"background:{bg}\">{who} is using your computer · press Esc to stop</div>")
+}
+fn html_escape(s: &str) -> String { s.chars().take(40).map(|c| match c { '<' => "&lt;".into(), '>' => "&gt;".into(), '&' => "&amp;".into(), '"' => "&quot;".into(), c => c.to_string() }).collect() }
 const TEACH_BAR: &str = "<div style=\"background:rgba(79,120,181,.96)\">Buddy is watching · do the task, then press Esc</div>";
 fn banner(target: &EventLoopWindowTarget<Ev>, text: &str) -> (Window, WebView) {
-    let title = if text == TEACH_BAR { "Buddy is watching" } else { "Buddy is using your computer" };
+    let title = if text == TEACH_BAR { "Buddy is watching" } else { "Buddy is using your computer" };   // (text is the bar's html)
     let wb = WindowBuilder::new().with_title(title).with_inner_size(LogicalSize::new(430.0, 34.0))
         .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_focused(false);
     #[cfg(windows)] let wb = { use tao::platform::windows::WindowBuilderExtWindows; wb.with_skip_taskbar(true).with_undecorated_shadow(false) };
@@ -322,6 +343,32 @@ fn banner(target: &EventLoopWindowTarget<Ev>, text: &str) -> (Window, WebView) {
     if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(&w, true); }
     let v = build_view(WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0))
         .with_html(format!(r#"<!doctype html><meta charset="utf-8"><style>div{{height:34px;border-radius:17px;color:#fff;font:600 13px 'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center}}</style><body style="margin:0;background:transparent;overflow:hidden">{text}"#))
+        .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:")), &w);
+    (w, v)
+}
+
+/// The working bot's name tag: a small pill that sits where it clicks and rings once each time. Clicks go through it
+/// and screenshots skip it, so it never gets in the bot's own way.
+fn pointer(target: &EventLoopWindowTarget<Ev>, who: &str, color: &str) -> (Window, WebView) {
+    let who = if who.is_empty() { "Buddy".to_string() } else { html_escape(who) };
+    let c = if color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit()) { color.to_string() } else { "#D64D3D".into() };
+    let wb = WindowBuilder::new().with_title("Buddy is working").with_inner_size(LogicalSize::new(220.0, 64.0))
+        .with_decorations(false).with_transparent(true).with_always_on_top(true).with_resizable(false).with_focused(false).with_visible(true);
+    #[cfg(windows)] let wb = { use tao::platform::windows::WindowBuilderExtWindows; wb.with_skip_taskbar(true).with_undecorated_shadow(false) };
+    let w = wb.build(target).expect("pointer");
+    let (l, t, r, b) = sys::work_area(&w);
+    w.set_outer_position(PhysicalPosition::new((l + r) / 2, (t + b) / 2));
+    let _ = w.set_ignore_cursor_events(true);
+    if std::env::var("STUPID_BUDDY_SHOWCASE").is_err() { sys::hide_from_capture(&w, true); }
+    let html = format!(r#"<!doctype html><meta charset="utf-8"><style>
+body{{margin:0;background:transparent;overflow:hidden;font:600 12.5px 'Segoe UI',system-ui,sans-serif}}
+#ring{{position:absolute;left:10px;top:10px;width:24px;height:24px;border-radius:50%;border:3px solid {c};opacity:0}}
+#ring.go{{animation:r .6s ease-out}}@keyframes r{{from{{transform:scale(.3);opacity:1}}to{{transform:scale(1.6);opacity:0}}}}
+#dot{{position:absolute;left:18px;top:18px;width:8px;height:8px;border-radius:50%;background:{c};box-shadow:0 0 0 3px #fff8}}
+#tag{{position:absolute;left:34px;top:30px;padding:4px 10px;border-radius:12px;background:{c};color:#fff;white-space:nowrap;box-shadow:0 4px 14px #0004}}
+</style><body><div id="ring"></div><div id="dot"></div><div id="tag">{who}</div>
+<script>function ping(){{const r=document.getElementById('ring');r.classList.remove('go');void r.offsetWidth;r.classList.add('go')}}</script>"#);
+    let v = build_view(WebViewBuilder::new().with_transparent(true).with_background_color((0, 0, 0, 0)).with_html(html)
         .with_navigation_handler(|url| url.starts_with("about:") || url.starts_with("data:")), &w);
     (w, v)
 }
@@ -396,6 +443,7 @@ fn handle(app: &mut App, body: &str) {
         "hands.start" => {
             if app.teach.on.load(Ordering::SeqCst) { return app.reply(id, Err("Buddy is watching you teach it a task right now.".into())); }
             let task = m.get("task").and_then(Value::as_str).unwrap_or("this task").to_string();
+            app.who = (m.get("who").and_then(Value::as_str).unwrap_or("").to_string(), m.get("color").and_then(Value::as_str).unwrap_or("").to_string());
             let p = app.proxy.clone();
             std::thread::spawn(move || {
                 let ok = std::env::var("STUPID_BUDDY_SELFTEST").is_ok() || std::env::var("STUPID_BUDDY_SHOWCASE").is_ok() || sys::confirm("Let Buddy use your mouse and keyboard?",
@@ -408,7 +456,10 @@ fn handle(app: &mut App, body: &str) {
         "hands.stop" => { app.hands_off(); app.reply(id, Ok(json!(true))) }
         "teach.start" => app.teach_on(id),
         "teach.stop" => { app.teach.stop(); app.reply(id, Ok(json!(true))) }
-        op if op.starts_with("hands.") => { let (s, op) = (app.hands.clone(), op.to_string()); app.work(id, move || hands::act(&op, &m, &s)) }
+        op if op.starts_with("hands.") => {
+            if let Some((x, y)) = hands::target(op, &m, &app.hands) { app.point_at(x, y); }   // the name tag goes where it's about to click
+            let (s, op) = (app.hands.clone(), op.to_string()); app.work(id, move || hands::act(&op, &m, &s))
+        }
         #[cfg(target_os = "linux")]
         "voice.can" => {
             let provider = m.get("provider").and_then(Value::as_str).unwrap_or("").to_string();

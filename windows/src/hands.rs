@@ -23,6 +23,13 @@ pub fn now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::
 
 const RISKY: &str = r"(?i)\b(send|buy|pay|purchase|order|checkout|delete|remove|erase|trash|submit|post|publish|transfer|confirm|sign out|log out|uninstall)\b";
 
+/// Where a click or scroll is about to happen, in screen pixels (for the bot's name tag), if it's that kind of action.
+pub fn target(op: &str, m: &Map<String, Value>, s: &State) -> Option<(i32, i32)> {
+    if !matches!(op, "hands.click" | "hands.doubleClick" | "hands.rightClick" | "hands.scroll") || !s.active.load(Ordering::SeqCst) { return None; }
+    let num = |k: &str| m.get(k).and_then(Value::as_f64).unwrap_or(0.0);
+    let (scale, ox, oy) = *s.geo.lock().unwrap(); let scale = if scale > 0.0 { scale } else { 1.0 };
+    Some((ox + (num("x") / scale).round() as i32, oy + (num("y") / scale).round() as i32))
+}
 pub fn act(op: &str, m: &Map<String, Value>, s: &State) -> Result<Value, String> {
     if !s.active.load(Ordering::SeqCst) { return Err("Hands Buddy isn’t allowed to act right now.".into()); }
     let num = |k: &str| m.get(k).and_then(Value::as_f64).unwrap_or(0.0);

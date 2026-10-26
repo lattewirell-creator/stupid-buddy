@@ -112,7 +112,7 @@ async function runHelper(key, task, ui, opts) {
     Native.call('hands.askPermissions').catch(() => {});
     return 'I need two permissions first. In System Settings → Privacy & Security on your Mac, turn on The Stupid Buddy under both “Screen & System Audio Recording” and “Accessibility”, then quit and reopen Buddy and ask again.';
   }
-  try { await Native.call('hands.start', { task }); }
+  try { await Native.call('hands.start', { task, who: opts.who || '', color: opts.color || '' }); }   // the bar and name tag show who's working
   catch (e) { return e.message === 'permissions' ? 'I still need the Screen Recording and Accessibility permissions in System Settings.' : e.message; }
   try { return await runSteps(key, task, ui, opts); }
   finally { Native.call('hands.stop').catch(() => {}); }
@@ -177,7 +177,7 @@ const Team = {
    * You ask; Buddy answers, handing parts to helpers when it helps.
    * ui: { job(key, task) → { step(text, err), done(summary) }, typing(text) }. Returns Buddy's reply.
    */
-  async ask(text, ui, { models, name = 'Buddy', persona = '', signal, without = [], voice = false }) {
+  async ask(text, ui, { models, name = 'Buddy', persona = '', signal, without = [], voice = false, color = '' }) {
     const leadTools = LEAD_TOOLS.filter((t) => !without.includes(t.function.name.replace(/^ask_/, '')));
     const sys = `You are ${name}, a helper who lives on the user's ${DEVICE === 'phone' ? 'phone' : DEVICE + ' desktop'}. ${persona}\nYou lead a small team:\n` +
       Object.entries(HELPERS).filter(([k]) => !without.includes(k)).map(([, h]) => `- ${h.name}: ${h.job}`).join('\n') +
@@ -199,7 +199,7 @@ const Team = {
         const task = String((c.args && c.args.task) || text);
         const job = ui.job(key, task);
         let result;
-        try { result = await runHelper(key, task, job, { models, signal }); }
+        try { result = await runHelper(key, task, job, { models, signal, who: name, color }); }
         catch (e) { if (e.message === 'stopped') throw e; result = 'The helper hit a problem: ' + e.message; }
         job.done(result);
         messages.push({ role: 'tool', tool_call_id: c.id, tool_name: c.name, content: clip(result) });

@@ -329,3 +329,62 @@ body.retro #bubble.pop { animation: none; }   /* 90s balloons just appear */
 #agents > * { flex-shrink: 0; }   /* a long list scrolls instead of squeezing the buttons */
 #agents .agent-say { width: 100%; }
 #agents .agent-say .say-send { flex: none; height: 36px; padding: 0 16px; }
+
+/* ---------------- slim scrollbars, light and dark (no white Windows bar with arrows) ---------------- */
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 22%, transparent) padding-box; border: 3px solid transparent; border-radius: 10px; min-height: 36px; }
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--text) 38%, transparent); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+
+/* ---------------- agents, cleaner: a big plain title, grouped lists, a real switch ---------------- */
+#agents { gap: 14px; font-family: -apple-system, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif; }
+#agents h2.large { font: 700 28px/1.1 -apple-system, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; letter-spacing: -.02em; margin: 2px 0 0; }
+#agents .intro { color: var(--muted); font-size: 13px; }
+#agents .group > .label { font-size: 12px; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--muted); margin: 0 0 6px 4px; }
+/* Always on: one grouped row with a switch on the right */
+#agents .always { display: flex; align-items: center; gap: 12px; margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 0; box-shadow: 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent); cursor: pointer; }
+#agents .always.warn { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--accent-soft); }
+#agents .always-text { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+#agents .always-text b { font-size: 14px; font-weight: 600; color: var(--text); }
+#agents .always-text small { font-size: 12px; color: var(--muted); }
+.switch { appearance: none; -webkit-appearance: none; flex: none; width: 42px; height: 26px; border-radius: 13px; margin: 0; background: color-mix(in srgb, var(--text) 18%, transparent); position: relative; cursor: pointer; transition: background .2s var(--ease); }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.25); transition: transform .2s var(--ease); }
+.switch:checked { background: #34C759; }
+.switch:checked::after { transform: translateX(16px); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The board: soft cards, no borders */
+#agents .board { gap: 10px; }
+#agents .tile { border: 0; border-radius: 18px; padding: 14px; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 14px rgba(0,0,0,.05); }
+#agents .tile:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 10px 24px rgba(0,0,0,.08); }
+#agents .tile-name { font-size: 14px; margin-top: 4px; }
+#agents .tile-status { background: transparent; padding: 0; color: var(--muted); font-size: 12px; }
+#agents .tile.working .tile-status { background: transparent; color: var(--accent); font-weight: 600; }
+#agents .tile.failed .tile-status { background: transparent; color: #FF453A; font-weight: 600; }
+#agents .tile.add { background: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 12%, transparent); }
+#agents .add-plus { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 24px; font-weight: 300; color: var(--accent); background: var(--accent-soft); }
+/* The bots' pictures: a rounded square in its colour with a little screen face, and its emoji on a badge */
+.bot-av { --s: 36px; position: relative; flex: none; width: var(--s); height: var(--s); border-radius: calc(var(--s) * .3); background: linear-gradient(160deg, color-mix(in srgb, var(--c) 72%, #fff), var(--c) 70%); box-shadow: inset 0 -2px 4px rgba(0,0,0,.14), 0 2px 6px color-mix(in srgb, var(--c) 35%, transparent); display: grid; place-items: center; }
+.bot-face { width: 64%; height: 46%; border-radius: calc(var(--s) * .14); background: #1E1C1A; display: flex; align-items: center; justify-content: center; gap: 18%; box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+.bot-face i { width: 13%; height: 44%; border-radius: 999px; background: #E9FBFF; box-shadow: 0 0 6px #8FE3FF; animation: botBlink 5s infinite; }
+@keyframes botBlink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.15); } }
+.bot-badge { position: absolute; right: calc(var(--s) * -.12); bottom: calc(var(--s) * -.12); width: calc(var(--s) * .46); height: calc(var(--s) * .46); border-radius: 50%; display: grid; place-items: center; font-size: calc(var(--s) * .26); background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.bot-av.thinking .bot-face i { animation: botThink .9s ease-in-out infinite; }
+@keyframes botThink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .bot-face i, .bot-av.thinking .bot-face i { animation: none; } }
+/* Templates and skills: an inset grouped list with hairlines and chevrons */
+#agents .templates { gap: 0; border-radius: 14px; overflow: hidden; background: var(--surface); }
+#agents .template { border: 0; border-radius: 0; padding: 11px 14px; background: transparent; position: relative; }
+#agents .template + .template::before { content: ''; position: absolute; top: 0; left: 50px; right: 0; border-top: 1px solid color-mix(in srgb, var(--text) 9%, transparent); }
+#agents .template:hover { background: var(--hover); }
+#agents .template-text { flex: 1; }
+#agents .template .chev { color: var(--muted); font-size: 20px; line-height: 1; }
+/* An agent's page */
+#agents .agent-head.big .title { font: 700 22px/1.15 -apple-system, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif; letter-spacing: -.01em; }
+#agents .chip.back { border: 0; background: transparent; color: var(--accent); padding: 0; font-size: 14px; }
+#agents .agent-acts .chip { border: 0; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+#agents .live { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+/* Badge picker in the form */
+#agents .icons { gap: 6px; }
+#agents .icon-pick { width: 32px; height: 32px; border-radius: 10px; background: var(--surface); display: grid; place-items: center; font-size: 16px; }
+#agents .icon-pick.on { box-shadow: 0 0 0 2px var(--accent); }
