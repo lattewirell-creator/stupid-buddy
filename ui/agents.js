@@ -35,23 +35,34 @@ const Agents = (() => {
   /* ---------------- running one ---------------- */
   let running = null;   // { agent id, controller, settled: a promise for when it has really stopped }
   let teaching = false; // Buddy is watching you (or learning from it): agents wait
-  async function run(agent, why) {
+  async function run(agent, why, message = '') {
     if (running || busy || teaching) return false;
     let settle; const settled = new Promise((r) => (settle = r));
     const controller = new AbortController(); running = { id: agent.id, controller, settled };
     document.body.classList.add('agent-busy');
     const skill = skills.find((s) => s.id === agent.skill);
-    const text = agent.task + (skill ? `\n\nThis is how I do it myself; follow these steps:\n${skill.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` : '');
-    const rec = { id: uid(), agent: agent.id, at: Date.now(), why, status: 'running', helpers: [], answer: '' };
+    const text = (message || agent.task) + (skill && !message ? `\n\nThis is how I do it myself; follow these steps:\n${skill.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}` : '');
+    const rec = { id: uid(), agent: agent.id, at: Date.now(), why, status: 'running', helpers: [], answer: '', steps: [], asked: message ? message.slice(0, 500) : '' };
     runs.push(rec); save(); refresh();
-    const ui = { job(key) { if (HELPERS[key] && !rec.helpers.includes(HELPERS[key].name)) rec.helpers.push(HELPERS[key].name); refresh(); return { step() {}, done() {} }; } };
-    const team = Object.create(Team); team.history = [];   // its own conversation, not yours
+    // What it's doing, step by step, for the live view (the last 30 steps are kept with the run).
+    const ui = { job(key) {
+      const who = HELPERS[key] ? HELPERS[key].name : 'Buddy';
+      if (HELPERS[key] && !rec.helpers.includes(who)) rec.helpers.push(who);
+      rec.steps.push({ who, text: 'Started', at: Date.now() }); live();
+      return {
+        step(text, err) { rec.steps.push({ who, text: String(text || '').slice(0, 200), err: !!err, at: Date.now() }); rec.steps = rec.steps.slice(-30); live(); },
+        done() {},
+      };
+    } };
+    // Its own memory: the last things you told it and what it answered (not your chat with Buddy).
+    const team = Object.create(Team); team.history = (agent.thread || []).slice(-12);
     try {
       rec.answer = await team.ask(text, ui, { models, name: agent.name, persona: `You are one of the user's own agents, working on your own while they do other things. Your job: ${agent.job}`, signal: controller.signal,
         // Using the mouse and keyboard needs you there to say yes: on its own, only an agent following something you
         // taught it may (Run now is you being there).
         without: skill || why === 'now' ? [] : ['hands'] });
       rec.status = 'done';
+      agent.thread = [...team.history].slice(-20);
     } catch (e) {
       rec.status = e.message === 'stopped' ? 'stopped' : 'failed';
       rec.answer = e.message === 'stopped' ? 'Stopped.' : (ERRORS[e.message] || 'Something went wrong: ' + e.message);
@@ -65,7 +76,7 @@ const Agents = (() => {
       if (rec.status !== 'stopped' && why === 'schedule' && typeof Speech !== 'undefined' && !shown()) {
         const first = String(rec.answer || '').replace(/[#*_`>]/g, '').split(/\n+/).find((l) => l.trim()) || '';
         const line = rec.status === 'done' ? `${agent.name} is done ✓ ${first.length > 70 ? first.slice(0, 68) + '…' : first}` : `${agent.name} couldn’t finish. Want a look?`;
-        Speech.say(line.trim(), { ms: 20000, actions: [{ label: 'Show me', primary: true, fn: async () => { await Speech.hush(); if (document.body.classList.contains('closed')) await open(); show(); } }] });
+        Speech.say(line.trim(), { ms: 20000, actions: [{ label: 'Show me', primary: true, fn: async () => { await Speech.hush(); if (document.body.classList.contains('closed')) await open(); open_ = agent.id; show(); } }] });
       }
       settle();
     }
@@ -91,20 +102,31 @@ const Agents = (() => {
     view().classList.remove('hidden');
     for (const r of runs) r.unread = false; save(); badge(); render();
   }
-  function hide() { view().classList.add('hidden'); for (const id of ['log', 'ask', 'chips']) $(id).classList.remove('hidden'); editing = skillEdit = null; }
+  function hide() { view().classList.add('hidden'); for (const id of ['log', 'ask', 'chips']) $(id).classList.remove('hidden'); editing = skillEdit = null; open_ = null; }
   const shown = () => !view().classList.contains('hidden');
   // From the background (a run starting or finishing): don't wipe a form you're filling in.
-  const refresh = () => { if (!editing && !skillEdit && !teaching) render(); };
+  const refresh = () => { if (editing || skillEdit || teaching) return; const typing = document.activeElement && document.activeElement.closest && document.activeElement.closest('.agent-say'); if (typing && typing.querySelector('input').value) return; render(); };
   function badge() { document.body.classList.toggle('unread', runs.some((r) => r.unread)); }
+
+  // Ready-made agents: one tap fills in the form, you change what you like.
+  const TEMPLATES = [
+    { icon: '☀️', name: 'Morning Buddy', job: 'Starts my day', task: 'Write me a short, friendly morning brief: today\'s date, one thing worth knowing from the news, and a tip to get going. Keep it under 100 words.', when: 'weekdays', time: '08:00' },
+    { icon: '🧹', name: 'Tidy Buddy', job: 'Keeps my Downloads folder clean', task: 'Look in my Downloads folder and put files in folders by kind: Images, Documents, Installers, Archives and Other. Tell me what you moved.', when: 'daily', time: '17:00' },
+    { icon: '🔎', name: 'Research Buddy', job: 'Looks things up for me', task: 'Find the three most useful, recent articles about a topic I care about and sum each up in two sentences with its link. Topic: AI tools for small businesses.', when: 'weekdays', time: '12:00' },
+    { icon: '✍️', name: 'Writer Buddy', job: 'Drafts things for me', task: 'Draft a short, warm LinkedIn post about something I learned this week. Ask me nothing; make a good first draft I can edit.', when: 'off', time: '08:00' },
+    { icon: '📊', name: 'Week Buddy', job: 'Sums up my week', task: 'Look at what I changed in Documents and Desktop this week and write a short summary of what I worked on, as bullet points.', when: 'daily', time: '16:00' },
+  ];
+  let open_ = null;   // the agent whose page is open (its talk, what it's doing, what it did)
 
   function render() {
     if (!shown()) return;
     const box = view(); box.replaceChildren();
+    if (skillEdit) { box.appendChild(el('h2', 'serif', 'Your agents')); return renderSkill(box); }
+    if (editing) { box.appendChild(el('h2', 'serif', editing.id ? 'Change ' + (editing.name || 'agent') : 'New agent')); return renderForm(box); }
+    const a = open_ && agents.find((x) => x.id === open_);
+    if (a) return renderAgent(box, a);
     box.appendChild(el('h2', 'serif', 'Your agents'));
-    if (skillEdit) return renderSkill(box);
-    if (editing) return renderForm(box);
-    box.appendChild(el('p', 'intro', 'Little Buddies with one job each. They work on this ' + DEVICE + ' while you do other things, and leave what they did here.'));
-    if (!agents.length) box.appendChild(el('div', 'empty', 'No agents yet. Make one: a name, a job, and when it should run.'));
+    box.appendChild(el('p', 'intro', 'Little Buddies with one job each. They work on this ' + DEVICE + ' while you do other things. Tap one to talk to it or see what it’s doing.'));
     // Always on: Buddy starts with the computer, so a 08:00 agent runs at 08:00 even if you never opened him.
     const always = el('label', 'toggle always hidden'); const box2 = el('input'); box2.type = 'checkbox';
     always.append(box2, el('span', null, 'Start Buddy when I log in, so agents run on time'));
@@ -118,9 +140,25 @@ const Agents = (() => {
       Native.call('autostart', { on: box2.checked }).then((on) => { box2.checked = on; always.classList.remove('warn'); })
         .catch((e) => { box2.checked = !box2.checked; note2(e.message); });
     });
-    for (const a of agents) box.appendChild(card(a));
+    // The board: every agent with how it's doing right now.
+    if (agents.length) {
+      const board = el('div', 'board');
+      for (const x of agents) board.appendChild(tile(x));
+      box.appendChild(board);
+    }
     const add = el('button', 'primary', '+ New agent'); add.addEventListener('click', () => { editing = { id: null, name: '', job: '', task: '', when: 'daily', time: '08:00', color: COLORS[agents.length % COLORS.length], skill: '', on: true }; render(); });
     box.appendChild(add);
+    // Start from a ready-made one.
+    const g0 = el('div', 'group'); g0.appendChild(el('div', 'label', agents.length ? 'Or start from one of these' : 'Start from one of these'));
+    const tpl = el('div', 'templates');
+    for (const t of TEMPLATES) {
+      const b = el('button', 'template'); b.type = 'button';
+      b.append(el('span', 'template-icon', t.icon), Object.assign(el('span', 'template-text'), {}));
+      b.lastChild.append(el('b', null, t.name), el('small', null, t.job));
+      b.addEventListener('click', () => { editing = Object.assign({ id: null, color: COLORS[agents.length % COLORS.length], skill: '', on: true }, t); delete editing.icon; render(); });
+      tpl.appendChild(b);
+    }
+    g0.appendChild(tpl); box.appendChild(g0);
     // Skills
     const g = el('div', 'group'); g.appendChild(el('div', 'label', 'Things you’ve taught Buddy'));
     if (!skills.length) g.appendChild(el('div', 'note left', canTeach ? 'Show Buddy a task once (like filing an invoice or posting a weekly update) and an agent can do it for you after that.' : 'Teaching Buddy by showing it works on Windows for now.'));
@@ -134,29 +172,90 @@ const Agents = (() => {
     const done = el('button', 'link', 'Back to the chat'); done.addEventListener('click', hide); box.appendChild(done);
   }
 
-  function card(a) {
-    const c = el('div', 'agent' + (a.on ? '' : ' off'));
-    const head = el('div', 'agent-head'); head.appendChild(ballEl(a.color));
-    const t = el('div', 'grow'); t.append(el('div', 'title', a.name), el('small', null, a.job));
-    head.appendChild(t); c.appendChild(head);
-    const isRunning = running && running.id === a.id;
-    const meta = el('div', 'agent-meta', isRunning ? 'Working now…' : `${whenText(a)}${a.on && a.next ? ' · next ' + new Date(a.next).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : ''}${a.on ? '' : ' · paused'}`);
-    c.appendChild(meta);
+  /** How an agent is doing, in a few words. */
+  function status(a) {
+    if (running && running.id === a.id) return ['working', 'Working…'];
+    if (!a.on) return ['paused', 'Paused'];
     const last = runs.filter((r) => r.agent === a.id).slice(-1)[0];
-    if (last) {
-      const r = el('div', 'agent-run ' + last.status);
-      r.appendChild(el('div', 'agent-run-head', `${last.status === 'running' ? 'Working' : last.status === 'done' ? 'Done' : last.status === 'stopped' ? 'Stopped' : 'Didn’t work'} · ${ago(last.at)}${last.helpers.length ? ' · with ' + last.helpers.join(', ') : ''}`));
-      if (last.answer) { const body = el('div', 'agent-answer'); body.innerHTML = md(last.answer); r.appendChild(body); }
-      c.appendChild(r);
-    }
+    if (last && last.status === 'failed') return ['failed', 'Needs a look'];
+    if (a.when === 'off' || !a.next) return ['idle', 'Waits for you'];
+    return ['waiting', 'Next ' + new Date(a.next).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })];
+  }
+  /** One agent on the board. */
+  function tile(a) {
+    const [kind, text] = status(a);
+    const t = el('button', 'tile ' + kind); t.type = 'button';
+    const ball = ballEl(a.color); if (kind === 'working') ball.classList.add('thinking');
+    const unread = runs.some((r) => r.agent === a.id && r.unread);
+    const name = el('div', 'tile-name', a.name); if (unread) name.appendChild(el('i', 'tile-dot'));
+    t.append(ball, name, el('div', 'tile-job', a.job), el('div', 'tile-status', text));
+    t.addEventListener('click', () => { open_ = a.id; for (const r of runs) if (r.agent === a.id) r.unread = false; save(); badge(); render(); });
+    return t;
+  }
+
+  /** An agent's own page: talk to it, see what it's doing right now, and what it did before. */
+  function renderAgent(box, a) {
+    const isRunning = running && running.id === a.id;
+    const top = el('div', 'agent-top');
+    const back = el('button', 'chip back', '‹ All agents'); back.addEventListener('click', () => { open_ = null; render(); });
+    top.appendChild(back); box.appendChild(top);
+    const head = el('div', 'agent-head big'); head.appendChild(ballEl(a.color));
+    const t = el('div', 'grow'); t.append(el('div', 'title', a.name), el('small', null, a.job)); head.appendChild(t);
+    const [kind, text] = status(a); head.appendChild(el('span', 'pill-status ' + kind, text));
+    box.appendChild(head);
     const acts = el('div', 'agent-acts');
     const btn = (label, fn, cls = 'chip') => { const b = el('button', cls, label); b.addEventListener('click', fn); acts.appendChild(b); return b; };
     if (isRunning) btn('Stop', () => running && running.controller.abort());
     else { const r = btn('Run now', () => { if (running || busy || teaching) note2('Buddy is busy right now. Try again in a moment.'); else run(a, 'now'); }); r.disabled = !!running || !!busy; }
     btn(a.on ? 'Pause' : 'Resume', () => { a.on = !a.on; a.next = nextRun(a); save(); render(); });
     btn('Edit', () => { editing = Object.assign({}, a); render(); });
-    c.appendChild(acts);
-    return c;
+    box.appendChild(acts);
+    box.appendChild(el('div', 'agent-meta', whenText(a) + (a.skill ? ' · follows something you taught it' : '')));
+    // Live: what it's doing right now, step by step.
+    const now = isRunning && runs.filter((r) => r.agent === a.id).slice(-1)[0];
+    if (now) {
+      const lv = el('div', 'live'); lv.id = 'agentLive';
+      lv.appendChild(el('div', 'live-head', 'Working now'));
+      const list = el('div', 'live-steps');
+      for (const st of now.steps.slice(-8)) { const r = el('div', 'live-step' + (st.err ? ' err' : '')); r.append(el('b', null, st.who), document.createTextNode(' ' + st.text)); list.appendChild(r); }
+      if (!now.steps.length) list.appendChild(el('div', 'live-step', 'Getting started…'));
+      lv.appendChild(list); box.appendChild(lv);
+    }
+    // The conversation: what you asked it and what it did, oldest first.
+    const talk = el('div', 'agent-talk');
+    const mine = runs.filter((r) => r.agent === a.id).slice(-12);
+    if (!mine.length) talk.appendChild(el('div', 'empty', `${a.name} hasn’t done anything yet. Tap Run now, or tell it something below.`));
+    for (const r of mine) {
+      if (r.asked) talk.appendChild(el('div', 'msg me', r.asked));
+      if (r.status === 'running') continue;
+      const b = el('div', 'msg bot' + (r.status === 'failed' ? ' failed' : ''));
+      b.appendChild(el('div', 'msg-when', (r.why === 'schedule' ? 'On schedule · ' : '') + ago(r.at) + (r.helpers.length ? ' · with ' + r.helpers.join(', ') : '')));
+      const body = el('div'); body.innerHTML = md(r.answer || ''); b.appendChild(body);
+      talk.appendChild(b);
+    }
+    box.appendChild(talk);
+    // Tell it something: it works on that now, and remembers it next time.
+    const f = el('form', 'agent-say');
+    const i = el('input'); i.placeholder = `Tell ${a.name} something…`; i.maxLength = 500;
+    const go = el('button', 'chip say-send', 'Send'); go.type = 'submit';
+    f.append(i, go);
+    f.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const msg = i.value.trim(); if (!msg) return;
+      if (running || busy || teaching) { note2('Buddy is busy right now. Try again in a moment.'); return; }
+      i.value = ''; run(a, 'now', msg);
+    });
+    box.appendChild(f);
+    setTimeout(() => { talk.scrollIntoView({ block: 'end' }); }, 0);
+  }
+  // While an agent works, its page shows each step as it happens (without redrawing a form you're typing in).
+  function live() {
+    if (!shown() || editing || skillEdit || teaching) return;
+    const r = running && runs.find((x) => x.agent === running.id && x.status === 'running');
+    const lv = $('agentLive');
+    if (!r || !lv || open_ !== running.id) { refresh(); return; }
+    const list = lv.querySelector('.live-steps'); list.replaceChildren();
+    for (const st of r.steps.slice(-8)) { const d = el('div', 'live-step' + (st.err ? ' err' : '')); d.append(el('b', null, st.who), document.createTextNode(' ' + st.text)); list.appendChild(d); }
   }
   function note2(text) { const n = el('div', 'note', text); view().prepend(n); setTimeout(() => n.remove(), 3000); }
 
