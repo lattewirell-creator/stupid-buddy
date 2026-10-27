@@ -384,10 +384,11 @@ export function createBuddy(container, { interactive = true, onClick = null, zoo
     raf = 0;
     if (!visible || document.hidden || paused) return;
     const busy = st.busy || st.talking || st.held || st.walking || squash > 0 || now < st.dizzyUntil || now < activeUntil || hopVel !== 0 || Math.abs(spinVel) > 0.01;
-    raf = requestAnimationFrame(tick);
     if (busy) lastBusy = now;
-    // idle: ~30 fps, then a calm ~12 fps after a while (the gentle float looks the same, the computer works far less)
-    if (!busy && (++frame % (now - lastBusy > 6000 ? 5 : 2))) return;
+    // Smooth while anything happens (every frame: dropping to 12 fps made the float stutter); after 8 s of nothing,
+    // Buddy rests and nothing is drawn until something moves him again (kick).
+    if (!busy && now - lastBusy > 8000) return;
+    raf = requestAnimationFrame(tick);
     const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now; const t = now / 1000;
     // float + hop (with squash & stretch)
     if (hopVel || hop > 0) { hopVel -= 14 * dt; hop += hopVel * dt; if (hop <= 0) { hop = 0; hopVel = hopVel < -2.5 ? -hopVel * 0.35 : 0; } }

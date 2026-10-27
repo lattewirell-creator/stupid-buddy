@@ -1,6 +1,6 @@
 [package]
 name = "stupid-buddy"
-version = "0.9.6"
+version = "0.9.7"
 edition = "2021"
 description = "Buddy and a small team that does work for you"
 
@@ -25,7 +25,7 @@ zip = { version = "9.0.5", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
 uiautomation = "0.25.1"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_UI_Shell"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_Media"] }
 
 # Linux: GTK (the same one tao and wry use) for alerts, the screen's work area, finding apps and taking the focus,
 # and the Secret Service (GNOME Keyring) for AI keys.

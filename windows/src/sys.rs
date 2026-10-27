@@ -103,6 +103,13 @@ pub fn hide_from_capture(w: &Window, hide: bool) {
 }
 #[cfg(target_os = "linux")]
 pub fn hide_from_capture(_w: &Window, _hide: bool) {}   // only Hands Buddy needs it, and it isn't on Linux yet
+/// Windows: ask for its 1 ms timer while Buddy flies (by default it wakes in ~15.6 ms steps), and give it back after.
+#[cfg(windows)]
+pub fn fine_timer(on: bool) {
+    unsafe { if on { windows_sys::Win32::Media::timeBeginPeriod(1); } else { windows_sys::Win32::Media::timeEndPeriod(1); } }
+}
+#[cfg(not(windows))]
+pub fn fine_timer(_on: bool) {}
 
 /// Moves and resizes a window in one step (no in-between frame where it has the new size at the old place).
 #[cfg(windows)]
