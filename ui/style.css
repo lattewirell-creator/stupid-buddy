@@ -388,3 +388,4 @@ body.retro #bubble.pop { animation: none; }   /* 90s balloons just appear */
 #agents .icons { gap: 6px; }
 #agents .icon-pick { width: 32px; height: 32px; border-radius: 10px; background: var(--surface); display: grid; place-items: center; font-size: 16px; }
 #agents .icon-pick.on { box-shadow: 0 0 0 2px var(--accent); }
+.toggle select { margin-left: auto; height: 28px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: 13px; }

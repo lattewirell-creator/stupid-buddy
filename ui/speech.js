@@ -137,8 +137,41 @@ const Speech = (() => {
     'Plot twist: the real assistant was the friends we made along the way.',
     'Loading witty comment… 87%… 88%… never mind.',
     'Remember to save your work. I say this with love.',
+    'I counted your open windows. I needed a nap afterwards.',
+    'Quick, look busy. Oh wait, that’s my job.',
+    'Fun fact: I’m round so I never get stuck in corners.',
+    'If you need a break, I’ll guard the desktop.',
+    'Did you know I can tidy files? I’m just saying. Loudly.',
+    'Stretch your arms. I’d do it too, but… no arms.',
+    'Somewhere a tab is playing music and you can’t find it.',
+    'I just rolled a tiny bit to the left. You didn’t see that.',
+    'Blink twice if you need coffee.',
+    'Your mouse has travelled far today. Proud of it.',
+    'Rumour says the Recycle Bin is full of secrets.',
+    'Ask me anything. Except my age. I’m a ball.',
+    'Plan for today: be helpful, be round, be here.',
+    'Pssst. Throw me. It’s good for morale.',
+    'Error 418: I’m a buddy, not a teapot.',
   ];
   const chatterOn = () => { try { return localStorage.getItem('chatter') !== 'off'; } catch { return true; } };
+  // How often he talks while you leave him be (Settings → Chatter), and whether he says it out loud.
+  const EVERY = { often: [2, 5], sometimes: [10, 20], rarely: [25, 50] };
+  const every = () => { try { return EVERY[localStorage.getItem('chatterEvery')] || EVERY.often; } catch { return EVERY.often; } };
+  const aloudOn = () => { try { return localStorage.getItem('chatterAloud') !== 'off'; } catch { return true; } };
+  /** Says a line out loud with the computer's own voice (an English one), without emoji or markdown. */
+  function aloud(text) {
+    if (!aloudOn() || !window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return;
+    const plain = String(text).replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE0F}*_`#]/gu, '').replace(/\s+/g, ' ').trim();
+    if (!plain) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(plain);
+      const v = speechSynthesis.getVoices();
+      u.voice = v.find((x) => /en-(US|GB)/i.test(x.lang) && /natural|aria|jenny|guy|zira|samantha/i.test(x.name)) || v.find((x) => /^en/i.test(x.lang)) || null;
+      u.lang = (u.voice && u.voice.lang) || 'en-US'; u.rate = 1.03; u.pitch = 1.12;   // a touch brighter: he's a little guy
+      speechSynthesis.speak(u);
+    } catch {}
+  }
   const quiet = () => busy || speaking || waiting || flying() || held() || !closed() || !ready
     || (typeof Agents !== 'undefined' && (Agents.running() || Agents.teaching()))
     || document.body.classList.contains('hands');
@@ -150,12 +183,12 @@ const Speech = (() => {
     return line;
   }
   const minutes = (a, b) => (a + Math.random() * (b - a)) * 60e3;
-  let next = Date.now() + minutes(8, 15);
+  let next = Date.now() + minutes(1, 2);   // the first one soon after he starts
   setInterval(() => {
     if (Date.now() < next) return;
-    if (!chatterOn() || quiet()) { next = Date.now() + minutes(3, 6); return; }
-    next = Date.now() + minutes(25, 50);
-    hop(); say(pick(), { ms: 7000 });
+    if (!chatterOn() || quiet()) { next = Date.now() + minutes(1, 2); return; }
+    next = Date.now() + minutes(...every());
+    const line = pick(); hop(); say(line, { ms: 7000 }); aloud(line);
   }, 30e3);
 
   /** A little hop and a happy face: Buddy noticing you. */
@@ -173,11 +206,11 @@ const Speech = (() => {
     const who = L.call ? ' ' + L.call : '';
     const greet = h < 5 ? `Up late${who}? I’m here. 🌙` : h < 11 ? `Good morning${who}! ☀️` : h < 17 ? `Hi${who}! I’m back 👋` : `Good evening${who}! 🌆`;
     document.body.classList.add('hello');
-    setTimeout(() => { document.body.classList.remove('hello'); hop(); if (chatterOn()) say(greet, { ms: 4500 }); }, calm() ? 0 : 700);
+    setTimeout(() => { document.body.classList.remove('hello'); hop(); if (chatterOn()) { say(greet, { ms: 4500 }); aloud(greet); } }, calm() ? 0 : 700);
   }
 
   /** You checked for updates yourself (Settings): the old question is answered. */
   const forget = () => { unanswered = null; if (waiting && waiting.actions.length) waiting = null; };
 
-  return { say, hush, handoff, forget, inChat, hello, active: () => speaking, LINES };
+  return { say, hush, handoff, forget, aloud, inChat, hello, active: () => speaking, LINES };
 })();

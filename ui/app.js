@@ -48,7 +48,7 @@ async function close() {
 }
 {
   // Drag the ball anywhere; fling it and it flies, bounces off the screen edges and lands (Physics.swift).
-  const ball = $('ball'); let start = null, moved = false, samples = [], hushed = false;
+  const ball = $('ball'); let start = null, moved = false, samples = [], hushed = false; const pend = { dx: 0, dy: 0, raf: 0 };
   // Grabbing Buddy while he talks hides the bubble; a plain click then only does that (it doesn't open the chat too).
   ball.addEventListener('pointerdown', (e) => { hushed = typeof Speech !== 'undefined' && Speech.active(); if (hushed) Speech.hush(); start = { x: e.screenX, y: e.screenY }; moved = false; samples = [{ t: performance.now(), x: e.screenX, y: e.screenY }]; ball.setPointerCapture(e.pointerId); ball.classList.add('held'); Ball3D.held(true); });
   ball.addEventListener('pointermove', (e) => {
@@ -57,12 +57,15 @@ async function close() {
     if (!moved && Math.hypot(dx, dy) < 4) return;
     moved = true; start = { x: e.screenX, y: e.screenY };
     const now = performance.now(); samples.push({ t: now, x: e.screenX, y: e.screenY }); while (samples.length > 2 && now - samples[0].t > 90) samples.shift();
-    Native.call('drag', { dx, dy });
+    // One window move per frame with everything the mouse did since (a call per mouse event piled up and lagged).
+    pend.dx += dx; pend.dy += dy;
+    if (!pend.raf) pend.raf = requestAnimationFrame(() => { pend.raf = 0; const { dx: x, dy: y } = pend; pend.dx = pend.dy = 0; if (x || y) Native.call('drag', { dx: x, dy: y }); });
   });
   ball.addEventListener('pointerup', () => {
     ball.classList.remove('held'); Ball3D.held(false);
     if (!start) return; start = null;
     if (!moved) { if (!hushed) open(); return; }
+    if (pend.raf) { cancelAnimationFrame(pend.raf); pend.raf = 0; if (pend.dx || pend.dy) Native.call('drag', { dx: pend.dx, dy: pend.dy }); pend.dx = pend.dy = 0; }
     const a = samples[0], b = samples[samples.length - 1], dt = Math.max(16, b.t - a.t) / 1000;
     Native.call('release', { vx: (b.x - a.x) / dt, vy: (b.y - a.y) / dt });
   });
@@ -356,6 +359,10 @@ $('quitBtn').addEventListener('click', () => Native.call('quit'));
 {
   const box = $('chatterBox'); try { box.checked = localStorage.getItem('chatter') !== 'off'; } catch {}
   box.addEventListener('change', () => { try { localStorage.setItem('chatter', box.checked ? 'on' : 'off'); } catch {} });
+  const loud = $('aloudBox'), every = $('everySel');
+  try { loud.checked = localStorage.getItem('chatterAloud') !== 'off'; every.value = localStorage.getItem('chatterEvery') || 'often'; } catch {}
+  loud.addEventListener('change', () => { try { localStorage.setItem('chatterAloud', loud.checked ? 'on' : 'off'); } catch {} if (loud.checked && typeof Speech !== 'undefined') Speech.aloud('Hi! I’ll say things out loud now.'); });
+  every.addEventListener('change', () => { try { localStorage.setItem('chatterEvery', every.value); } catch {} });
 }
 
 /* ---------------- start ---------------- */

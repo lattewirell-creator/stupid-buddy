@@ -127,7 +127,18 @@ impl App {
         self.physics.release(vx * scale, vy * scale);
         if !self.ticking.swap(true, Ordering::SeqCst) {
             let (p, ticking) = (self.proxy.clone(), self.ticking.clone());
-            std::thread::spawn(move || while ticking.load(Ordering::SeqCst) { std::thread::sleep(Duration::from_millis(16)); let _ = p.send_event(Ev::Tick); });
+            std::thread::spawn(move || {
+                // Windows sleeps in ~15.6 ms steps unless asked for 1 ms: 16 ms became 31 ms and the flight stuttered.
+                sys::fine_timer(true);
+                let mut next = std::time::Instant::now();
+                while ticking.load(Ordering::SeqCst) {
+                    next += Duration::from_micros(16_667);
+                    let now = std::time::Instant::now();
+                    if next > now { std::thread::sleep(next - now); } else { next = now; }
+                    let _ = p.send_event(Ev::Tick);
+                }
+                sys::fine_timer(false);
+            });
         }
     }
     fn tick(&mut self) {
